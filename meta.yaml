@@ -1,0 +1,22 @@
+package:
+  name: qutils-eliotheinrich 
+  version: "1.0.0"
+about:
+  home: https://github.com/eliotheinrich/qutils
+  license: MIT
+  summary: A small example package
+source:
+  git_url: https://github.com/eliotheinrich/utils
+
+requirements:
+  build:
+    - python>=3.10
+    - scikit-build-core>=0.4.3
+    - nanobind>=1.8.0
+    - cmake>=3.26
+    - pip>=19
+    - numpy>=2.1.0
+    - fmt
+  run:
+    - numpy>=2.1.0
+    - python>=3.10
