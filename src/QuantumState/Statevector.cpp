@@ -1,4 +1,5 @@
 #include "QuantumStates.h"
+#include "Logger.hpp"
 #include "utils.hpp"
 
 #include <unsupported/Eigen/MatrixFunctions>
@@ -326,6 +327,27 @@ void Statevector::evolve_diagonal(const Eigen::VectorXcd& gate) {
     data(a) *= gate(a);
   }
   normalize();
+}
+
+void Statevector::evolve(const QuantumCircuit& circuit) { 
+  bool dir = get_dir();
+  QuantumCircuit simple = circuit.simplify(dir);
+  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+
+  QuantumState::evolve(simple); 
+}
+
+void Statevector::evolve(const QuantumCircuit& circuit, const Qubits& qubits) {
+  bool dir = get_dir();
+  QuantumCircuit simple = circuit.simplify(dir);
+  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+
+  if (simple.is_unitary() && qubits.size() < 4) {
+    Eigen::MatrixXcd matrix = simple.to_matrix();
+    evolve(matrix, qubits);
+  } else {
+    QuantumState::evolve(simple, qubits);
+  }
 }
 
 double Statevector::norm() const {

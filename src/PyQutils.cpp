@@ -1,14 +1,68 @@
 #include <PyQutils.hpp>
 
 #include "Logger.hpp"
+#include "CliffordState.h"
+#include "FreeFermion.h"
 
-using PyMutationFunc = std::function<PauliString(PauliString)>;
-inline PauliMutationFunc convert_from_pyfunc(PyMutationFunc func) {
-  return [func](PauliString& p) { p = func(p); };
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/tuple.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/optional.h>
+#include <nanobind/stl/variant.h>
+#include <nanobind/stl/function.h>
+#include <nanobind/stl/vector.h>
+#include <nanobind/stl/map.h>
+#include <nanobind/stl/shared_ptr.h>
+#include <nanobind/stl/complex.h>
+#include <nanobind/stl/array.h>
+#include <nanobind/stl/pair.h>
+#include <nanobind/ndarray.h>
+#include <nanobind/eigen/dense.h>
+
+using namespace nanobind::literals;
+
+template <typename T=double>
+using ndarray = nanobind::ndarray<nanobind::numpy, T>;
+
+template <typename T=double>
+ndarray<T> to_ndarray(const std::vector<T>& values, const std::vector<size_t>& shape) {
+  size_t k = 1;
+  for (size_t i = 0; i < shape.size(); i++) {
+    k *= shape[i];
+  }
+
+  T* buffer = new T[k];
+  std::move(values.begin(), values.end(), buffer); 
+
+  nanobind::capsule owner(buffer, [](void* p) noexcept {
+    delete static_cast<T*>(p);
+  });
+
+  return ndarray<T>(buffer, shape.size(), shape.data(), owner);
 }
 
-inline std::vector<dataframe::byte_t> concat_bytes(const std::vector<dataframe::byte_t>& bytes) {
-  return std::vector<dataframe::byte_t>(bytes.begin(), bytes.begin() + bytes.size() - 1);
+template <typename T>
+static std::vector<size_t> get_shape(ndarray<T> arr) {
+  size_t dim = arr.ndim();
+  std::vector<size_t> shape(dim);
+  for (size_t i = 0; i < dim; i++) {
+    shape[i] = arr.shape(i);
+  }
+
+  return shape;
+}
+
+nanobind::bytes convert_bytes(const std::vector<char>& bytes) {
+  nanobind::bytes nb_bytes(bytes.data(), bytes.size());
+  return nb_bytes;
+}
+
+std::vector<char> convert_bytes(const nanobind::bytes& bytes) {
+  std::vector<char> bytes_vec;
+  bytes_vec.reserve(bytes.size() + 1);
+  bytes_vec.insert(bytes_vec.end(), bytes.c_str(), bytes.c_str() + bytes.size());
+  bytes_vec.push_back('\0');
+  return bytes_vec;
 }
 
 NB_MODULE(qutils_bindings, m) {
@@ -161,7 +215,11 @@ NB_MODULE(qutils_bindings, m) {
   m.def("hardware_efficient_ansatz", &hardware_efficient_ansatz);
   m.def("haar_unitary", [](uint32_t num_qubits) { return haar_unitary(num_qubits); });
 
-  nanobind::class_<MagicQuantumState>(m, "QuantumState")
+  nanobind::class_<EntanglementEntropyState>(m, "EntanglementEntropyState")
+    .def("entanglement", &EntanglementEntropyState::entanglement)
+    .def("get_entanglement", &EntanglementEntropyState::get_entanglement<double>);
+
+  nanobind::class_<MagicQuantumState, EntanglementEntropyState>(m, "QuantumState")
     .def("num_qubits", &MagicQuantumState::get_num_qubits)
     .def("__str__", &MagicQuantumState::to_string)
     .def("__getstate__", [](const MagicQuantumState& self) { return convert_bytes(self.serialize()); })
@@ -299,7 +357,7 @@ NB_MODULE(qutils_bindings, m) {
       auto [shape, tensor] = self.tensor(q);
       return to_ndarray(tensor, shape); 
     })
-    .def("get_logged_truncerr", [](MatrixProductState& self, uint32_t q) { 
+    .def("get_logged_truncerr", [](MatrixProductState& self) { 
       std::vector<double> truncerr = self.get_logged_truncerr();
       std::vector<size_t> shape = {truncerr.size()};
       return to_ndarray(truncerr, shape); 
@@ -317,98 +375,6 @@ NB_MODULE(qutils_bindings, m) {
   m.def("ising_ground_state", &MatrixProductState::ising_ground_state, "num_qubits"_a, "h"_a, "bond_dimension"_a=16, "sv_threshold"_a=1e-8, "num_sweeps"_a=10);
   m.def("xxz_ground_state", &MatrixProductState::xxz_ground_state, "num_qubits"_a, "delta"_a, "bond_dimension"_a=16, "sv_threshold"_a=1e-8, "num_sweeps"_a=10);
   m.def("spin_chain_ground_state", &MatrixProductState::spin_chain_ground_state, "num_qubits"_a, "Jx"_a, "Jy"_a, "Jz"_a, "bond_dimension"_a=16, "sv_threshold"_a=1e-8, "num_sweeps"_a=10);
-
-  nanobind::class_<EntanglementEntropyState>(m, "EntanglementEntropyState");
-
-  nanobind::class_<EntropySampler>(m, "EntropySampler")
-    .def(nanobind::init<dataframe::ExperimentParams&>())
-    .def_static("create_and_emplace", [](dataframe::ExperimentParams& params) {
-      auto sampler = std::make_shared<EntropySampler>(params);
-      return std::make_pair(sampler, params);
-    })
-    .def("take_samples", [](EntropySampler& sampler, std::shared_ptr<EntanglementEntropyState> state) {
-      dataframe::SampleMap samples;
-      sampler.add_samples(samples, state);
-      return samples;
-    });
-
-  nanobind::class_<InterfaceSampler>(m, "InterfaceSampler")
-    .def(nanobind::init<dataframe::ExperimentParams&>())
-    .def_static("create_and_emplace", [](dataframe::ExperimentParams& params) {
-      auto sampler = std::make_shared<InterfaceSampler>(params);
-      return std::make_pair(sampler, params);
-    })
-    .def("take_samples", [](InterfaceSampler& sampler, const std::vector<int>& surface) {
-      dataframe::SampleMap samples;
-      sampler.add_samples(samples, surface);
-      return samples;
-    });
-
-  nanobind::class_<QuantumStateSampler>(m, "QuantumStateSampler")
-    .def(nanobind::init<dataframe::ExperimentParams&>())
-    .def_static("create_and_emplace", [](dataframe::ExperimentParams& params) {
-      auto sampler = std::make_shared<QuantumStateSampler>(params);
-      return std::make_pair(sampler, params);
-    })
-    .def("take_samples", [](QuantumStateSampler& sampler, const std::shared_ptr<MagicQuantumState>& state) {
-      std::shared_ptr<QuantumState> qstate = std::dynamic_pointer_cast<QuantumState>(state);
-      dataframe::SampleMap samples;
-      sampler.add_samples(samples, qstate);
-      return samples;
-    });
-
-  nanobind::class_<GenericParticipationSampler>(m, "GenericParticipationSampler")
-    .def(nanobind::init<dataframe::ExperimentParams&>())
-    .def_static("create_and_emplace", [](dataframe::ExperimentParams& params) {
-      auto sampler = std::make_shared<GenericParticipationSampler>(params);
-      return std::make_pair(sampler, params);
-    })
-    .def("take_samples", [](GenericParticipationSampler& sampler, const std::shared_ptr<MagicQuantumState>& state) {
-      std::shared_ptr<QuantumState> qstate = std::dynamic_pointer_cast<QuantumState>(state);
-      dataframe::SampleMap samples;
-      sampler.add_samples(samples, qstate);
-      return samples;
-    });
-    
-  nanobind::class_<MPSParticipationSampler>(m, "MPSParticipationSampler")
-    .def(nanobind::init<dataframe::ExperimentParams&>())
-    .def_static("create_and_emplace", [](dataframe::ExperimentParams& params) {
-      auto sampler = std::make_shared<MPSParticipationSampler>(params);
-      return std::make_pair(sampler, params);
-    })
-    .def("take_samples", [](MPSParticipationSampler& sampler, const std::shared_ptr<MatrixProductState>& state) {
-      dataframe::SampleMap samples;
-      sampler.add_samples(samples, state);
-      return samples;
-    });
-
-  nanobind::class_<GenericMagicSampler>(m, "GenericMagicSampler")
-    .def(nanobind::init<dataframe::ExperimentParams&>())
-    .def_static("create_and_emplace", [](dataframe::ExperimentParams& params) {
-      auto sampler = std::make_shared<GenericMagicSampler>(params);
-      return std::make_pair(sampler, params);
-    })
-    .def("set_sre_montecarlo_update", [](GenericMagicSampler& self, PyMutationFunc func) {
-      auto mutation = convert_from_pyfunc(func);
-      self.set_montecarlo_update(mutation);
-    })
-    .def("take_samples", [](GenericMagicSampler& sampler, const std::shared_ptr<MagicQuantumState>& state) {
-      dataframe::SampleMap samples;
-      sampler.add_samples(samples, state);
-      return samples;
-    });
-
-  nanobind::class_<MPSMagicSampler>(m, "MPSMagicSampler")
-    .def(nanobind::init<dataframe::ExperimentParams&>())
-    .def_static("create_and_emplace", [](dataframe::ExperimentParams& params) {
-      auto sampler = std::make_shared<MPSMagicSampler>(params);
-      return std::make_pair(sampler, params);
-    })
-    .def("take_samples", [](MPSMagicSampler& sampler, const std::shared_ptr<MatrixProductState>& state) {
-      dataframe::SampleMap samples;
-      sampler.add_samples(samples, state);
-      return samples;
-    });
 
   nanobind::class_<QuantumCHPState, EntanglementEntropyState>(m, "QuantumCHPState")
     .def(nanobind::init<uint32_t>())
@@ -476,21 +442,7 @@ NB_MODULE(qutils_bindings, m) {
     .def("get_entanglement", [](QuantumCHPState& self) {
       return self.get_entanglement<int>(2u);
     })
-    .def("random_clifford", &QuantumCHPState::random_clifford)
-    .def("get_texture", [](QuantumCHPState& state, 
-        const std::vector<float>& color_x, const std::vector<float>& color_z, const std::vector<float>& color_y
-    ) -> std::tuple<std::vector<float>, size_t, size_t> {
-      if ((color_x.size() != 3) || (color_z.size() != 3) || (color_y.size() != 3)) {
-        throw std::runtime_error(fmt::format("Color must have size 3. Colors have sizes {}, {}, and {}.", color_x.size(), color_y.size(), color_z.size()));
-      }
-
-      Texture texture = state.get_texture({color_x[0], color_x[1], color_x[2], 1.0},
-                                          {color_z[0], color_z[1], color_z[1], 1.0},
-                                          {color_y[0], color_y[1], color_y[1], 1.0});
-
-      const float* data = texture.data();
-      return {std::vector<float>{data, data + texture.len()}, texture.n, texture.m};
-    });
+    .def("random_clifford", &QuantumCHPState::random_clifford);
 
   nanobind::class_<CliffordTable<QuantumCircuit>>(m, "CliffordTable")
     .def("__init__", [](CliffordTable<QuantumCircuit> *t, const std::vector<PauliString>& p1, const std::vector<PauliString>& p2) {

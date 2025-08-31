@@ -1,4 +1,5 @@
 #include "QuantumStates.h"
+#include "Logger.hpp"
 
 #include <memory>
 #include <sstream>
@@ -2159,6 +2160,27 @@ void MatrixProductState::evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) {
 
 void MatrixProductState::evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) {
   impl->evolve(gate, qubits);
+}
+
+void MatrixProductState::evolve(const QuantumCircuit& circuit) { 
+  bool dir = get_dir();
+  QuantumCircuit simple = circuit.simplify(dir);
+  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+
+  QuantumState::evolve(simple);
+}
+
+void MatrixProductState::evolve(const QuantumCircuit& circuit, const Qubits& qubits) {
+  bool dir = get_dir();
+  QuantumCircuit simple = circuit.simplify(dir);
+  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+
+  if (simple.is_unitary() && qubits.size() < 4) {
+    Eigen::MatrixXcd matrix = simple.to_matrix();
+    evolve(matrix, qubits);
+  } else {
+    QuantumState::evolve(simple, qubits);
+  }
 }
 
 std::vector<double> MatrixProductState::probabilities() const {

@@ -3,7 +3,6 @@
 #include "QuantumCircuit.h"
 #include "EntanglementEntropyState.hpp"
 #include "Random.hpp"
-#include "Logger.hpp"
 
 #include <map>
 #include <bitset>
@@ -76,17 +75,7 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
 
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits)=0;
 
-    void _evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) {
-      size_t r = gate.rows();
-      size_t c = gate.cols();
-      if (r == c) {
-        evolve(gate, qubits);
-      } else if (c == 1) {
-        evolve_diagonal(gate, qubits);
-      } else {
-        throw std::runtime_error(fmt::format("Invalid gate shape: {}x{}", r, c));
-      }
-    }
+    void _evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits);
 
     template <typename G>
     void evolve_one_qubit_gate(uint32_t q) {
@@ -130,88 +119,30 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
     DEFINE_TWO_QUBIT_GATE(cz, CZ);
     DEFINE_TWO_QUBIT_GATE(swap, SWAP);
 
-    virtual void random_clifford(const Qubits& qubits) {
-      Qubits qubits_ = argsort(qubits);
-      QuantumCircuit qc(qubits.size());
-      random_clifford_impl(qubits_, qc);
-      evolve(qc, qubits);
-    }
+    virtual void random_clifford(const Qubits& qubits);
 
-		virtual void evolve(const Eigen::MatrixXcd& gate) {
-			Qubits qubits(num_qubits);
-			std::iota(qubits.begin(), qubits.end(), 0);
-			_evolve(gate, qubits);
-		}
+		virtual void evolve(const Eigen::MatrixXcd& gate);
 
-		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t q) {
-			Qubits qubit{q};
-			_evolve(gate, qubit); 
-		}
+		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t q);
 
-		virtual void evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits) { 
-			evolve(Eigen::MatrixXcd(gate.asDiagonal()), qubits); 
-		}
+		virtual void evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits);
 
-		virtual void evolve_diagonal(const Eigen::VectorXcd& gate) { 
-			evolve(Eigen::MatrixXcd(gate.asDiagonal())); 
-		}
+		virtual void evolve_diagonal(const Eigen::VectorXcd& gate);
 
-		virtual void evolve(const Instruction& inst) {
-			std::visit(quantumcircuit_utils::overloaded{
-				[this](std::shared_ptr<Gate> gate) { 
-					_evolve(gate->define(), gate->qubits); 
-				},
-				[this](Measurement m) { 
-          measure(m);
-				},
-        [this](WeakMeasurement m) {
-          weak_measure(m);
-        }
-			}, inst);
-		}
+		virtual void evolve(const Instruction& inst);
 
-		virtual void evolve(const QuantumCircuit& circuit) {
-			if (circuit.num_params() > 0) {
-				throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve Statevector.");
-			}
+		virtual void evolve(const QuantumCircuit& circuit);
 
-			for (auto const &inst : circuit.instructions) {
-				evolve(inst);
-			}
-		}
+    virtual void evolve(const QuantumCircuit& qc, const Qubits& qubits);
 
-    virtual void evolve(const QuantumCircuit& qc, const Qubits& qubits) {
-      if (qubits.size() != qc.get_num_qubits()) {
-        throw std::runtime_error("Provided qubits do not match size of circuit.");
-      }
-
-      QuantumCircuit qc_mapped(qc);
-      qc_mapped.resize(num_qubits);
-      qc_mapped.apply_qubit_map(qubits);
-      
-      evolve(qc_mapped);
-    }
-
-    static inline bool check_forced_measure(bool& outcome, double prob_zero) {
-      if (((1.0 - prob_zero) < QS_ATOL && outcome) || (prob_zero < QS_ATOL && !outcome)) {
-        outcome = !outcome;
-        throw std::runtime_error("Invalid forced measurement.\n");
-        return true;
-      }
-
-      return false;
-    }
+    static bool check_forced_measure(bool& outcome, double prob_zero);
 
     virtual bool measure(const Measurement& m)=0;
     virtual bool weak_measure(const WeakMeasurement& m)=0;
 
     // Helper functions
-    bool measure(const Qubits& qubits, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt) {
-      return measure(Measurement(qubits, pauli, outcome));
-    }
-    bool weak_measure(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt) {
-      return weak_measure(WeakMeasurement(qubits, beta, pauli, outcome));
-    }
+    bool measure(const Qubits& qubits, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
+    bool weak_measure(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
 
     virtual std::vector<BitAmplitudes> sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) const;
 
@@ -308,26 +239,9 @@ class DensityMatrix : public MagicQuantumState {
 
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate) override;
 
-		virtual void evolve(const QuantumCircuit& circuit) override { 
-      bool dir = get_dir();
-      QuantumCircuit simple = circuit.simplify(dir);
-      Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+		virtual void evolve(const QuantumCircuit& circuit) override;
 
-			QuantumState::evolve(simple); 
-		}
-
-		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override {
-      bool dir = get_dir();
-      QuantumCircuit simple = circuit.simplify(dir);
-      Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-      if (simple.is_unitary() && qubits.size() < 4) {
-        Eigen::MatrixXcd matrix = simple.to_matrix();
-        evolve(matrix, qubits);
-      } else {
-        QuantumState::evolve(simple, qubits);
-      }
-    }
+		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override;
 
 		double mzr_prob(uint32_t q, bool outcome) const;
 		bool mzr(uint32_t q);
@@ -393,26 +307,9 @@ class Statevector : public MagicQuantumState {
 
 		virtual void evolve_diagonal(const Eigen::VectorXcd &gate) override;
 
-		virtual void evolve(const QuantumCircuit& circuit) override { 
-      bool dir = get_dir();
-      QuantumCircuit simple = circuit.simplify(dir);
-      Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+		virtual void evolve(const QuantumCircuit& circuit) override;
 
-			QuantumState::evolve(simple); 
-		}
-
-		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override {
-      bool dir = get_dir();
-      QuantumCircuit simple = circuit.simplify(dir);
-      Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-      if (simple.is_unitary() && qubits.size() < 4) {
-        Eigen::MatrixXcd matrix = simple.to_matrix();
-        evolve(matrix, qubits);
-      } else {
-        QuantumState::evolve(simple, qubits);
-      }
-    }
+		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override;
 
 		double mzr_prob(uint32_t q, bool outcome) const;
 		bool mzr(uint32_t q);
@@ -497,26 +394,8 @@ class MatrixProductState : public MagicQuantumState {
 
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) override;
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
-		virtual void evolve(const QuantumCircuit& circuit) override { 
-      bool dir = get_dir();
-      QuantumCircuit simple = circuit.simplify(dir);
-      Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-      QuantumState::evolve(simple);
-		}
-
-		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override {
-      bool dir = get_dir();
-      QuantumCircuit simple = circuit.simplify(dir);
-      Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-      if (simple.is_unitary() && qubits.size() < 4) {
-        Eigen::MatrixXcd matrix = simple.to_matrix();
-        evolve(matrix, qubits);
-      } else {
-        QuantumState::evolve(simple, qubits);
-      }
-    }
+		virtual void evolve(const QuantumCircuit& circuit) override;
+		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override;
 
 		virtual std::vector<double> probabilities() const override;
 

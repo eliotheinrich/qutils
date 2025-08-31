@@ -1,6 +1,6 @@
 #pragma once
 
-#include "CliffordState/CliffordState.hpp"
-#include "CliffordState/Tableau.hpp"
-#include "CliffordState/QuantumCHPState.hpp"
+#include "CliffordState/CliffordState.h"
+#include "CliffordState/Tableau.h"
+#include "CliffordState/QuantumCHPState.h"
 #include "CliffordState/QuantumGraphState.h"

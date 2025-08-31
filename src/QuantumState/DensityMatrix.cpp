@@ -1,7 +1,7 @@
 #include "QuantumStates.h"
-#include <unsupported/Eigen/KroneckerProduct>
+#include "Logger.hpp"
 
-#include <glaze/glaze.hpp>
+#include <unsupported/Eigen/KroneckerProduct>
 
 DensityMatrix::DensityMatrix(uint32_t num_qubits) : MagicQuantumState(num_qubits) {
 	data = Eigen::MatrixXcd::Zero(basis, basis);
@@ -250,6 +250,27 @@ void DensityMatrix::evolve_diagonal(const Eigen::VectorXcd& gate) {
 	}
 }
 
+void DensityMatrix::evolve(const QuantumCircuit& circuit) { 
+  bool dir = get_dir();
+  QuantumCircuit simple = circuit.simplify(dir);
+  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+
+  QuantumState::evolve(simple); 
+}
+
+void DensityMatrix::evolve(const QuantumCircuit& circuit, const Qubits& qubits) {
+  bool dir = get_dir();
+  QuantumCircuit simple = circuit.simplify(dir);
+  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+
+  if (simple.is_unitary() && qubits.size() < 4) {
+    Eigen::MatrixXcd matrix = simple.to_matrix();
+    evolve(matrix, qubits);
+  } else {
+    QuantumState::evolve(simple, qubits);
+  }
+}
+
 bool DensityMatrix::mzr(uint32_t q) {
 	for (uint32_t i = 0; i < basis; i++) {
 		for (uint32_t j = 0; j < basis; j++) {
@@ -398,6 +419,8 @@ std::vector<double> DensityMatrix::probabilities() const {
 	return probs;
 }
 
+#include <glaze/glaze.hpp>
+
 namespace glz::detail {
    template <>
    struct from<BEVE, Eigen::MatrixXcd> {
@@ -439,6 +462,7 @@ namespace glz::detail {
       }
    };
 }
+
 
 struct DensityMatrix::glaze {
   using T = DensityMatrix;

@@ -27,19 +27,6 @@ include(FetchContent)
 
 set(EXTERNALS "")
 
-if (DEFINED DATAFRAME_SOURCE)
-    set(dataframe_SOURCE_DIR ${DATAFRAME_SOURCE})
-    add_subdirectory(${DATAFRAME_SOURCE} "dataframe_src")
-else()
-    FetchContent_Declare(
-        dataframe
-        GIT_REPOSITORY https://github.com/eliotheinrich/dataframe
-        GIT_TAG master
-        GIT_SHALLOW TRUE
-    )
-    list(APPEND EXTERNALS dataframe)
-endif()
-
 FetchContent_Declare(
   glaze
   GIT_REPOSITORY https://github.com/stephenberry/glaze.git
@@ -67,7 +54,6 @@ FetchContent_MakeAvailable(${EXTERNALS})
 # -------------------------------- #
 
 include_directories(
-    ${dataframe_SOURCE_DIR}/src
     ${eigen_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/src
     ${glaze_SOURCE_DIR}/include
@@ -101,12 +87,7 @@ if (BUILDING_PYQUTILS)
     src/PyQutils.cpp
   )
 
-  set(qutils_libs clifford_state dataframe)
-  if (DEFINED BUILD_GLFW)
-    list(APPEND qutils_libs simulator_display)
-  endif()
-
-  target_link_libraries(qutils_bindings PUBLIC ${qutils_libs})
+  target_link_libraries(qutils_bindings PUBLIC quantum_circuit quantum_state clifford_state free_fermion)
 
   install(
     TARGETS qutils_bindings

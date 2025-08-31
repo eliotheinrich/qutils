@@ -6,6 +6,8 @@
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
+#include "Random.hpp"
+
 
 bool qargs_unique(const Qubits& qubits) {
   std::unordered_set<uint32_t> unique;

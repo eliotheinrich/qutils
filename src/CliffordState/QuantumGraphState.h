@@ -2,10 +2,8 @@
 
 #include <vector>
 #include "Graph.hpp"
-#include "CliffordState.hpp"
-#include "QuantumCHPState.hpp"
-
-#include "QuantumState.h"
+#include "CliffordState.h"
+#include "QuantumCHPState.h"
 
 #define IDGATE     0
 #define XGATE      1
@@ -81,6 +79,6 @@ class QuantumGraphState : public CliffordState {
 
     virtual double sparsity() const override;
     
-    std::vector<dataframe::byte_t> serialize() const;
-    void deserialize(const std::vector<dataframe::byte_t>& bytes);
+    std::vector<char> serialize() const override;
+    void deserialize(const std::vector<char>& bytes) override;
 };

@@ -1,5 +1,5 @@
 #pragma once
 
-#include "FreeFermion/MajoranaState.hpp"
-#include "FreeFermion/GaussianState.hpp"
+#include "FreeFermion/MajoranaState.h"
+#include "FreeFermion/GaussianState.h"
 

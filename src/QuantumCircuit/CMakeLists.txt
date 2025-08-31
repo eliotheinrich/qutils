@@ -3,5 +3,6 @@ add_library(quantum_circuit
     Instructions.hpp
     Instructions.cpp
     QuantumCircuit.cpp
+    PauliString.hpp
     PauliString.cpp
 )
