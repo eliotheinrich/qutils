@@ -4,7 +4,8 @@ project(qutils LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread -w")
+add_compile_options(-pthread -w -Wno-error=c++11-narrowing)
+
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -g") 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -13,6 +14,7 @@ string(REPLACE ":" ";" CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
+
 # -------------------------------- #
 # ------ Fetching externals ------ #
 # -------------------------------- #
@@ -20,6 +22,9 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 foreach(PATH IN LISTS CMAKE_PREFIX_PATH)
     include_directories("${PATH}/include")
 endforeach()
+
+option(QUTILS_BUILD_TESTS "Build qutils tests" ON)
+option(QUTILS_BUILD_PYTHON "Build Python bindings" OFF)
 
 add_definitions(-DFMT_HEADER_ONLY)
 
@@ -63,34 +68,11 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/src/QuantumCircuit)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/FreeFermion)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/QuantumState)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/CliffordState)
-add_subdirectory(${PROJECT_SOURCE_DIR}/src/Tests)
 
-if (BUILDING_PYQUTILS)
-  find_package(Python 3.10 
-    REQUIRED COMPONENTS Interpreter Development.Module
-    OPTIONAL_COMPONENTS Development.SABIModule
-  )
+if (QUTILS_BUILD_TESTS)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/src/Tests)
+endif()
 
-  # Finding nanobind
-  execute_process(
-    COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
-    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE NB_DIR
-  )
-  list(APPEND CMAKE_PREFIX_PATH "${NB_DIR}")
-  find_package(nanobind CONFIG REQUIRED)
-
-  nanobind_add_module(
-    qutils_bindings
-    STABLE_ABI
-    NB_STATIC
-    src/PyQutils.hpp
-    src/PyQutils.cpp
-  )
-
-  target_link_libraries(qutils_bindings PUBLIC quantum_circuit quantum_state clifford_state free_fermion)
-
-  install(
-    TARGETS qutils_bindings
-    LIBRARY DESTINATION qutils
-  )
+if (QUTILS_BUILD_PYTHON)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/src/Python)
 endif()

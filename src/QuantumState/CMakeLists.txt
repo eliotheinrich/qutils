@@ -25,5 +25,9 @@ else()
     set(ITENSOR_DEPS ${ITENSOR} ${OpenBLAS_LIBRARIES})
 endif()
 
-target_link_libraries(quantum_state PUBLIC quantum_circuit ${ITENSOR_DEPS})
-target_include_directories(quantum_state PRIVATE $ENV{ITENSOR_DIR})
+target_link_libraries(quantum_state 
+    PRIVATE quantum_circuit ${ITENSOR_DEPS}
+)
+target_include_directories(quantum_state 
+    PRIVATE $ENV{ITENSOR_DIR} ${glaze_SOURCE_DIR}/include
+)

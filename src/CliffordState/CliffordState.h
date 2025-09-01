@@ -51,8 +51,6 @@ class CliffordState : public QuantumState {
     virtual bool mxr(uint32_t a, std::optional<bool> outcome=std::nullopt);
     virtual bool myr(uint32_t a, std::optional<bool> outcome=std::nullopt);
 
-    virtual std::string to_string() const=0;
-
     virtual double sparsity() const=0;
 
     virtual bool measure(const Measurement& m) override;

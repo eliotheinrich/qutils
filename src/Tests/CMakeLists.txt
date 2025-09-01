@@ -1,48 +1,9 @@
-if (DEFINED QUTILS_BUILDING_TEST)
-    set(qutils_test_libs quantum_state clifford_state linear_code)
-    if (DEFINED BUILD_GLFW)
-        list(APPEND qutils_test_libs simulator_display)
-    endif()
+#set(qutils_test_libs quantum_state quantum_circuit clifford_state free_fermion)
+#set(qutils_test_libs quantum_circuit clifford_state free_fermion)
+set(qutils_test_libs clifford_state quantum_circuit quantum_state free_fermion)
 
-    add_executable(test_graph
-        test_graph.cpp
-    )
-    set_target_properties(test_graph PROPERTIES 
-        LINKER_LANGUAGE CXX 
-        POSITION_INDEPENDENT_CODE ON
-    )
-    target_link_libraries(test_graph PUBLIC ${qutils_test_libs})
-
-
-
-    add_executable(test_quantum_circuit
-        test_quantum_circuit.cpp
-    )
-    set_target_properties(test_quantum_circuit PROPERTIES 
-        LINKER_LANGUAGE CXX 
-        POSITION_INDEPENDENT_CODE ON
-    )
-    target_link_libraries(test_quantum_circuit PUBLIC ${qutils_test_libs})
-
-
-
-    add_executable(test_quantum_state
-        test_quantum_state.cpp
-    )
-    set_target_properties(test_quantum_state PROPERTIES 
-        LINKER_LANGUAGE CXX 
-        POSITION_INDEPENDENT_CODE ON
-    )
-    target_link_libraries(test_quantum_state PUBLIC ${qutils_test_libs})
-
-
-
-    add_executable(qutils_benchmark
-        benchmark.cpp
-    )
-    set_target_properties(qutils_benchmark PROPERTIES 
-        LINKER_LANGUAGE CXX 
-        POSITION_INDEPENDENT_CODE ON
-    )
-    target_link_libraries(qutils_benchmark PUBLIC ${qutils_test_libs})
-endif()
+foreach(tgt IN ITEMS test_graph test_quantum_circuit test_quantum_state benchmark)
+  add_executable(${tgt} ${tgt}.cpp)
+  target_link_libraries(${tgt} PRIVATE ${qutils_test_libs})
+  #add_test(NAME ${tgt} COMMAND ${tgt})
+endforeach()

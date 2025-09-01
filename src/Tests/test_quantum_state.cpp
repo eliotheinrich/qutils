@@ -1,9 +1,9 @@
 #include "tests.hpp"
 
+#include "QuantumCircuit.h"
 #include "QuantumState.h"
 #include "CliffordState.h"
-#include "LinearCode.h"
-#include "Samplers.h"
+#include "FreeFermion.h"
 
 #define MPS_DEBUG_LEVEL 1
 
@@ -127,9 +127,6 @@ QubitInterval random_interval(size_t num_qubits, size_t k) {
 
   return std::make_pair(q1, q2);
 }
-
-using namespace dataframe;
-using namespace dataframe::utils;
 
 bool test_statevector() {
   constexpr size_t nqb = 3;
@@ -948,133 +945,133 @@ bool test_mpo_bipartite_mmi() {
   return true;
 }
 
-std::vector<double> extract(const std::string& key, const SampleMap& data) {
-  const auto& [shape, values, error, nsamples] = data.at(key);
-  return values;
-}
+//std::vector<double> extract(const std::string& key, const SampleMap& data) {
+//  const auto& [shape, values, error, nsamples] = data.at(key);
+//  return values;
+//}
 
-bool test_stabilizer_entropy_sampling() {
-  constexpr size_t nqb = 6;
-
-  std::shared_ptr<Statevector> psi = std::make_shared<Statevector>(nqb);
-  std::shared_ptr<MatrixProductState> mps = std::make_shared<MatrixProductState>(nqb, 1u << nqb);
-
-  ExperimentParams params;
-  params["sample_stabilizer_entropy"] = 1;
-  params["sample_stabilizer_entropy_mutual"] = 1;
-  params["sample_stabilizer_entropy_bipartite"] = 1;
-  params["stabilizer_entropy_mutual_subsystem_size"] = static_cast<int>(nqb/2);
-  params["stabilizer_entropy_indices"] = "1,2,3";
-  params["sre_num_samples"] = 10000;
-
-  ExperimentParams params1 = params;
-  params1["sre_method"] = "exhaustive";
-  GenericMagicSampler sampler1(params1);
-
-  ExperimentParams params2 = params;
-  params2["sre_method"] = "exact";
-  GenericMagicSampler sampler2(params2);
-
-  ExperimentParams params3 = params;
-  MPSMagicSampler sampler3(params3);
-
-  randomize_state_haar(*psi.get(), *mps.get());
-
-  SampleMap samples1;
-  sampler1.add_samples(samples1, psi);
-
-  SampleMap samples2;
-  sampler2.add_samples(samples2, psi);
-
-  SampleMap samples3;
-  sampler3.add_samples(samples3, mps);
-
-  for (int i = 1; i <= 3; i++) {
-    double M1 = extract(STABILIZER_ENTROPY(i), samples1)[0];
-    double M2 = extract(STABILIZER_ENTROPY(i), samples2)[0];
-    double M3 = extract(STABILIZER_ENTROPY(i), samples3)[0];
-
-    ASSERT(is_close_eps(0.1, M1, M2, M3), fmt::format("SRE does not match: {:.5f}, {:.5f}, {:.5f}\n", M1, M2, M3));
-  }
-
-  double L1 = extract(STABILIZER_ENTROPY_MUTUAL, samples1)[0];
-  double L2 = extract(STABILIZER_ENTROPY_MUTUAL, samples2)[0];
-  double L3 = extract(STABILIZER_ENTROPY_MUTUAL, samples3)[0];
-
-  ASSERT(is_close_eps(0.1, L1, L2, L3), fmt::format("SRE mutual information does not match: {:.5f}, {:.5f}, {:.5f}\n", L1, L2, L3));
-
-  std::vector<double> L1b = extract(STABILIZER_ENTROPY_BIPARTITE, samples1);
-  std::vector<double> L2b = extract(STABILIZER_ENTROPY_BIPARTITE, samples2);
-  std::vector<double> L3b = extract(STABILIZER_ENTROPY_BIPARTITE, samples3);
-  for (size_t i = 0; i < nqb/2 - 1; i++) {
-    ASSERT(is_close_eps(0.1, L1b[i], L2b[i], L3b[i]), fmt::format("SRE mutual bipartite information does not match: {::.5f}, {::.5f}, {::.5f}\n", L1b, L2b, L3b));
-  }
-
-  return true;
-}
-
-bool test_participation_entropy_sampling() {
-  constexpr size_t nqb = 6;
-
-  std::shared_ptr<Statevector> psi = std::make_shared<Statevector>(nqb);
-  std::shared_ptr<MatrixProductState> mps = std::make_shared<MatrixProductState>(nqb, 1u << nqb);
-
-  ExperimentParams params;
-  params["sample_participation_entropy"] = 1;
-  params["sample_participation_entropy_mutual"] = 1;
-  params["sample_participation_entropy_bipartite"] = 1;
-  params["participation_entropy_num_samples"] = 10000;
-  params["participation_entropy_indices"] = "1,2";
-  std::vector<size_t> indices = {1, 2}; 
-
-  ExperimentParams params1 = params;
-  params1["participation_entropy_method"] = "exhaustive";
-  GenericParticipationSampler sampler1(params1);
-
-  ExperimentParams params2 = params;
-  params2["participation_entropy_method"] = "sampled";
-  GenericParticipationSampler sampler2(params2);
-
-  ExperimentParams params3 = params;
-  MPSParticipationSampler sampler3(params3);
-
-
-  for (size_t k = 0; k < 5; k++) {
-    randomize_state_haar(*psi.get(), *mps.get());
-    SampleMap samples1;
-    sampler1.add_samples(samples1, psi);
-
-    SampleMap samples2;
-    sampler2.add_samples(samples2, psi);
-
-    SampleMap samples3;
-    sampler3.add_samples(samples3, mps);
-
-    for (size_t i = 0; i < indices.size(); i++) {
-      size_t idx = indices[i];
-      double W1 = extract(PARTICIPATION_ENTROPY(idx), samples1)[0];
-      double W2 = extract(PARTICIPATION_ENTROPY(idx), samples2)[0];
-      double W3 = extract(PARTICIPATION_ENTROPY(idx), samples3)[0];
-
-      ASSERT(is_close_eps(0.1, W1, W2, W3), fmt::format("PE({}) does not match: {:.5f}, {:.5f}, {:.5f}\n", idx, W1, W2, W3));
-
-      double L1 = extract(PARTICIPATION_ENTROPY_MUTUAL(idx), samples1)[0];
-      double L2 = extract(PARTICIPATION_ENTROPY_MUTUAL(idx), samples2)[0];
-      double L3 = extract(PARTICIPATION_ENTROPY_MUTUAL(idx), samples3)[0];
-
-      ASSERT(is_close_eps(0.1, L1, L2, L3), fmt::format("PE({}) mutual information does not match: {:.5f}, {:.5f}, {:.5f}\n", idx, L1, L2, L3));
-
-      std::vector<double> L1b = extract(PARTICIPATION_ENTROPY_BIPARTITE(idx), samples1);
-      std::vector<double> L2b = extract(PARTICIPATION_ENTROPY_BIPARTITE(idx), samples2);
-      std::vector<double> L3b = extract(PARTICIPATION_ENTROPY_BIPARTITE(idx), samples3);
-      for (size_t i = 0; i < nqb/2 - 1; i++) {
-        ASSERT(is_close_eps(0.1, L1b[i], L2b[i], L3b[i]), fmt::format("PE({}) mutual bipartite information does not match: {::.5f}, {::.5f}, {::.5f}\n", idx, L1b, L2b, L3b));
-      }
-    }
-  }
-
-  return true;
-}
+//bool test_stabilizer_entropy_sampling() {
+//  constexpr size_t nqb = 6;
+//
+//  std::shared_ptr<Statevector> psi = std::make_shared<Statevector>(nqb);
+//  std::shared_ptr<MatrixProductState> mps = std::make_shared<MatrixProductState>(nqb, 1u << nqb);
+//
+//  ExperimentParams params;
+//  params["sample_stabilizer_entropy"] = 1;
+//  params["sample_stabilizer_entropy_mutual"] = 1;
+//  params["sample_stabilizer_entropy_bipartite"] = 1;
+//  params["stabilizer_entropy_mutual_subsystem_size"] = static_cast<int>(nqb/2);
+//  params["stabilizer_entropy_indices"] = "1,2,3";
+//  params["sre_num_samples"] = 10000;
+//
+//  ExperimentParams params1 = params;
+//  params1["sre_method"] = "exhaustive";
+//  GenericMagicSampler sampler1(params1);
+//
+//  ExperimentParams params2 = params;
+//  params2["sre_method"] = "exact";
+//  GenericMagicSampler sampler2(params2);
+//
+//  ExperimentParams params3 = params;
+//  MPSMagicSampler sampler3(params3);
+//
+//  randomize_state_haar(*psi.get(), *mps.get());
+//
+//  SampleMap samples1;
+//  sampler1.add_samples(samples1, psi);
+//
+//  SampleMap samples2;
+//  sampler2.add_samples(samples2, psi);
+//
+//  SampleMap samples3;
+//  sampler3.add_samples(samples3, mps);
+//
+//  for (int i = 1; i <= 3; i++) {
+//    double M1 = extract(STABILIZER_ENTROPY(i), samples1)[0];
+//    double M2 = extract(STABILIZER_ENTROPY(i), samples2)[0];
+//    double M3 = extract(STABILIZER_ENTROPY(i), samples3)[0];
+//
+//    ASSERT(is_close_eps(0.1, M1, M2, M3), fmt::format("SRE does not match: {:.5f}, {:.5f}, {:.5f}\n", M1, M2, M3));
+//  }
+//
+//  double L1 = extract(STABILIZER_ENTROPY_MUTUAL, samples1)[0];
+//  double L2 = extract(STABILIZER_ENTROPY_MUTUAL, samples2)[0];
+//  double L3 = extract(STABILIZER_ENTROPY_MUTUAL, samples3)[0];
+//
+//  ASSERT(is_close_eps(0.1, L1, L2, L3), fmt::format("SRE mutual information does not match: {:.5f}, {:.5f}, {:.5f}\n", L1, L2, L3));
+//
+//  std::vector<double> L1b = extract(STABILIZER_ENTROPY_BIPARTITE, samples1);
+//  std::vector<double> L2b = extract(STABILIZER_ENTROPY_BIPARTITE, samples2);
+//  std::vector<double> L3b = extract(STABILIZER_ENTROPY_BIPARTITE, samples3);
+//  for (size_t i = 0; i < nqb/2 - 1; i++) {
+//    ASSERT(is_close_eps(0.1, L1b[i], L2b[i], L3b[i]), fmt::format("SRE mutual bipartite information does not match: {::.5f}, {::.5f}, {::.5f}\n", L1b, L2b, L3b));
+//  }
+//
+//  return true;
+//}
+//
+//bool test_participation_entropy_sampling() {
+//  constexpr size_t nqb = 6;
+//
+//  std::shared_ptr<Statevector> psi = std::make_shared<Statevector>(nqb);
+//  std::shared_ptr<MatrixProductState> mps = std::make_shared<MatrixProductState>(nqb, 1u << nqb);
+//
+//  ExperimentParams params;
+//  params["sample_participation_entropy"] = 1;
+//  params["sample_participation_entropy_mutual"] = 1;
+//  params["sample_participation_entropy_bipartite"] = 1;
+//  params["participation_entropy_num_samples"] = 10000;
+//  params["participation_entropy_indices"] = "1,2";
+//  std::vector<size_t> indices = {1, 2}; 
+//
+//  ExperimentParams params1 = params;
+//  params1["participation_entropy_method"] = "exhaustive";
+//  GenericParticipationSampler sampler1(params1);
+//
+//  ExperimentParams params2 = params;
+//  params2["participation_entropy_method"] = "sampled";
+//  GenericParticipationSampler sampler2(params2);
+//
+//  ExperimentParams params3 = params;
+//  MPSParticipationSampler sampler3(params3);
+//
+//
+//  for (size_t k = 0; k < 5; k++) {
+//    randomize_state_haar(*psi.get(), *mps.get());
+//    SampleMap samples1;
+//    sampler1.add_samples(samples1, psi);
+//
+//    SampleMap samples2;
+//    sampler2.add_samples(samples2, psi);
+//
+//    SampleMap samples3;
+//    sampler3.add_samples(samples3, mps);
+//
+//    for (size_t i = 0; i < indices.size(); i++) {
+//      size_t idx = indices[i];
+//      double W1 = extract(PARTICIPATION_ENTROPY(idx), samples1)[0];
+//      double W2 = extract(PARTICIPATION_ENTROPY(idx), samples2)[0];
+//      double W3 = extract(PARTICIPATION_ENTROPY(idx), samples3)[0];
+//
+//      ASSERT(is_close_eps(0.1, W1, W2, W3), fmt::format("PE({}) does not match: {:.5f}, {:.5f}, {:.5f}\n", idx, W1, W2, W3));
+//
+//      double L1 = extract(PARTICIPATION_ENTROPY_MUTUAL(idx), samples1)[0];
+//      double L2 = extract(PARTICIPATION_ENTROPY_MUTUAL(idx), samples2)[0];
+//      double L3 = extract(PARTICIPATION_ENTROPY_MUTUAL(idx), samples3)[0];
+//
+//      ASSERT(is_close_eps(0.1, L1, L2, L3), fmt::format("PE({}) mutual information does not match: {:.5f}, {:.5f}, {:.5f}\n", idx, L1, L2, L3));
+//
+//      std::vector<double> L1b = extract(PARTICIPATION_ENTROPY_BIPARTITE(idx), samples1);
+//      std::vector<double> L2b = extract(PARTICIPATION_ENTROPY_BIPARTITE(idx), samples2);
+//      std::vector<double> L3b = extract(PARTICIPATION_ENTROPY_BIPARTITE(idx), samples3);
+//      for (size_t i = 0; i < nqb/2 - 1; i++) {
+//        ASSERT(is_close_eps(0.1, L1b[i], L2b[i], L3b[i]), fmt::format("PE({}) mutual bipartite information does not match: {::.5f}, {::.5f}, {::.5f}\n", idx, L1b, L2b, L3b));
+//      }
+//    }
+//  }
+//
+//  return true;
+//}
 
 bool test_mps_ising_model() {
   constexpr size_t nqb = 32;
@@ -1859,8 +1856,8 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_projector);
   ADD_TEST(test_mpo_sample_paulis);
   ADD_TEST(test_mpo_sample_paulis_montecarlo);
-  ADD_TEST(test_stabilizer_entropy_sampling);
-  ADD_TEST(test_participation_entropy_sampling);
+  //ADD_TEST(test_stabilizer_entropy_sampling);
+  //ADD_TEST(test_participation_entropy_sampling);
   ADD_TEST(test_mps_ising_model);
   ADD_TEST(test_mps_random_clifford);
   ADD_TEST(test_mps_conjugate);
