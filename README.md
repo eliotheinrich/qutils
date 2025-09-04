@@ -47,4 +47,4 @@ e2 = np.abs(chp.expectation(p))
 print(e1, e2)
 ```
 
-For a full list of the available classes and methods, check out src/PyQutils.cpp.
+For a full list of the available classes and methods, check out src/Python/PyQutils.cpp.
