@@ -34,10 +34,6 @@ void QuantumCHPState::set_print_mode(const std::string& mode) {
   }
 }
 
-void QuantumCHPState::rowsum(uint32_t q1, uint32_t q2) {
-  tableau.rowsum(q1, q2);
-}
-
 Statevector QuantumCHPState::to_statevector() const {
   return tableau.to_statevector();
 }
@@ -74,55 +70,27 @@ void QuantumCHPState::cz(uint32_t a, uint32_t b) {
   tableau.h(b);
 }
 
-PauliString QuantumCHPState::get_row(size_t i) const {
-  return tableau.rows[i];
+PauliString QuantumCHPState::get_stabilizer(size_t i) const {
+  return tableau.stabilizers[i];
+}
+
+PauliString QuantumCHPState::get_destabilizer(size_t i) const {
+  return tableau.destabilizers[i];
 }
 
 double QuantumCHPState::expectation(const BitString& bits, std::optional<QubitSupport> support) const {
-  Qubits qubits;
   if (support) {
-    qubits = to_qubits(support.value());
+    Tableau restricted = tableau.partial_trace(to_qubits(support_complement(support.value(), num_qubits)));
+    return restricted.bitstring_amplitude(bits);
   } else {
-    qubits = Qubits(num_qubits);
-    std::iota(qubits.begin(), qubits.end(), 0);
+    return tableau.bitstring_amplitude(bits);
   }
-  double p = 1/std::pow(2.0, partial_xrank(qubits));
-
-  bool in_support = true;
-  for (size_t q = 0; q < num_qubits; q++) {
-    // Need to check that every z-only stabilizer g acts on |z> as g|z> = |z>. 
-    const PauliString& row = tableau.rows[q + num_qubits];
-    bool has_x = false;
-    for (size_t i = 0; i < num_qubits; i++) {
-      if (row.get_x(i)) {
-        has_x = true;
-      }
-    }
-
-    if (has_x) {
-      continue;
-    }
-
-    // row is now z-only. Count the active bits acted on by a Z-operator
-
-    bool positive = true;
-    for (size_t i = 0; i < num_qubits; i++) {
-      if (row.get_z(i) && bits.get(i)) {
-        positive = !positive;
-      }
-    }
-
-    if (positive != (row.get_r() == 0)) {
-      in_support = false;
-      break;
-    }
-  }
-
-  return in_support ? p : 0.0;
 }
 
 std::vector<double> QuantumCHPState::probabilities() const {
-  double p = 1/std::pow(2.0, xrank());
+  if (num_qubits > 15) {
+    throw std::runtime_error(fmt::format("Cannot evaluate the probabilities() of a {} > 15 qubit state.", num_qubits));
+  }
 
   size_t b = 1u << num_qubits;
   std::vector<double> probs(b);
@@ -136,12 +104,7 @@ std::vector<double> QuantumCHPState::probabilities() const {
 }
 
 std::vector<PauliString> QuantumCHPState::stabilizers() const {
-  std::vector<PauliString> stabs(tableau.rows.begin() + num_qubits, tableau.rows.end() - 1);
-  return stabs;
-}
-
-size_t QuantumCHPState::size() const {
-  return tableau.rows.size() - 1;
+  return tableau.stabilizers;
 }
 
 void QuantumCHPState::random_clifford(const Qubits& qubits) {
@@ -213,11 +176,11 @@ int QuantumCHPState::partial_rank(const Qubits& qubits) const {
 }
 
 void QuantumCHPState::set_x(size_t i, size_t j, bool v) {
-  tableau.set_x(i, j, v);
+  tableau.stabilizers[i].set_x(j, v);
 }
 
 void QuantumCHPState::set_z(size_t i, size_t j, bool v) {
-  tableau.set_z(i, j, v);
+  tableau.stabilizers[i].set_z(j, v);
 }
 
 #include <glaze/glaze.hpp>
@@ -243,8 +206,8 @@ template<>
 struct glz::meta<Tableau> {
   static constexpr auto value = glz::object(
     "num_qubits", &Tableau::num_qubits,
-    "track_destabilizers", &Tableau::track_destabilizers,
-    "rows", &Tableau::rows
+    "stabilizers", &Tableau::stabilizers,
+    "destabilizers", &Tableau::destabilizers
   );
 };
 

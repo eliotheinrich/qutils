@@ -404,9 +404,9 @@ bool test_clifford_states() {
     Measurement m2(qubits, p, b1);
     auto [b2, p2] = chp.measure(m2);
 
-    ASSERT((b1 == b2) && is_close(p1, p2), "Different measurement outcomes observed.");
-
     Statevector psi_chp = chp.to_statevector();
+
+    ASSERT((b1 == b2) && is_close(p1, p2), "Different measurement outcomes observed.");
 
     ASSERT(states_close(psi, psi_chp), fmt::format("Clifford simulators disagree."));
 
@@ -1821,10 +1821,13 @@ bool test_chp_probs() {
   constexpr size_t nqb = 4;
   for (size_t i = 0; i < 10; i++) {
     QuantumCircuit qc(nqb);
-    qc.random_clifford({0, 1, 2, 3});
+    Qubits qubits(nqb);
+    std::iota(qubits.begin(), qubits.end(), 0);
+    qc.random_clifford(qubits);
 
     Statevector psi(nqb);
     QuantumCHPState chp(nqb);
+    chp.set_print_mode("paulis");
 
     psi.evolve(qc);
     chp.evolve(qc);
@@ -1837,12 +1840,13 @@ bool test_chp_probs() {
     }
 
     for (size_t z = 0; z < 100; z++) {
-      BitString bits = BitString::from_bits(nqb, randi(0, 1u << nqb));
-      QubitSupport support = random_qubits(nqb, randi(1, nqb));
+      size_t n = randi(1, nqb);
+      BitString bits = BitString::random(n);
+      Qubits support = random_qubits(nqb, n);
+      std::sort(support.begin(), support.end());
 
       double d1 = psi.expectation(bits, support);
       double d2 = chp.expectation(bits, support);
-      std::cout << fmt::format("d = {}, {}\n", d1, d2);
       ASSERT(is_close(d1, d2));
     }
   }

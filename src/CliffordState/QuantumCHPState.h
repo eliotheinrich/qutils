@@ -33,8 +33,6 @@ class QuantumCHPState : public CliffordState {
 
     void set_print_mode(const std::string& mode);
 
-    void rowsum(uint32_t q1, uint32_t q2);
-
     Statevector to_statevector() const;
 
     virtual void h(uint32_t a) override;
@@ -45,14 +43,13 @@ class QuantumCHPState : public CliffordState {
     virtual void cy(uint32_t a, uint32_t b) override;
     virtual void cz(uint32_t a, uint32_t b) override;
 
-    PauliString get_row(size_t i) const;
+    PauliString get_stabilizer(size_t i) const;
+    PauliString get_destabilizer(size_t i) const;
 
     std::vector<PauliString> stabilizers() const;
 
     virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const override;
 		virtual std::vector<double> probabilities() const override;
-
-    size_t size() const;
 
     virtual void random_clifford(const Qubits& qubits) override;
 

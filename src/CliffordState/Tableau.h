@@ -15,15 +15,15 @@
 
 class Tableau {
   public:
-    bool track_destabilizers;
     uint32_t num_qubits;
-    std::vector<PauliString> rows;
+    std::vector<PauliString> stabilizers;
+    std::vector<PauliString> destabilizers;
 
     Tableau()=default;
 
     Tableau(uint32_t num_qubits);
 
-    Tableau(uint32_t num_qubits, const std::vector<PauliString>& rows) : track_destabilizers(false), num_qubits(num_qubits), rows(rows) {}
+    Tableau(uint32_t num_qubits, const std::vector<PauliString>& rows) : num_qubits(num_qubits), stabilizers(rows) {}
 
     uint32_t num_rows() const;
 
@@ -43,6 +43,10 @@ class Tableau {
     uint32_t xrank(const Qubits& sites);
     uint32_t xrank();
 
+    Tableau partial_trace(const Qubits& qubits);
+
+    double bitstring_amplitude(const BitString& bits);
+
     inline void validate_qubit(uint32_t a) const {
       if (!(a >= 0 && a < num_qubits)) {
         std::string error_message = "A gate was applied to qubit " + std::to_string(a) + 
@@ -53,8 +57,6 @@ class Tableau {
 
     std::string to_string(bool print_destabilizers=true) const;
     std::string to_string_ops(bool print_destabilizers=true) const;
-
-    void rowsum(uint32_t h, uint32_t i);
 
     void h(uint32_t a);
     void s(uint32_t a);
@@ -72,41 +74,4 @@ class Tableau {
     MeasurementData mzr(uint32_t a, std::optional<bool> outcome=std::nullopt);
 
     double sparsity() const;
-
-
-    inline bool get_x(uint32_t i, uint32_t j) const { 
-      return rows[i].get_x(j); 
-    }
-
-    inline bool get_z(uint32_t i, uint32_t j) const { 
-      return rows[i].get_z(j); 
-    }
-
-    inline bool get_r(uint32_t i) const { 
-      uint8_t r = rows[i].get_r();
-      if (r == 0) {
-        return false;
-      } else if (r == 2) {
-        return true;
-      } else {
-        throw std::runtime_error("Anomolous phase detected in Clifford tableau.");
-      }
-    }
-
-    inline void set_x(uint32_t i, uint32_t j, bool v) { 
-      rows[i].set_x(j, v); 
-    }
-
-    inline void set_z(uint32_t i, uint32_t j, bool v) { 
-      rows[i].set_z(j, v); 
-    }
-
-    inline void set_r(uint32_t i, bool v) { 
-      if (v) {
-        rows[i].set_r(2);
-      } else {
-        rows[i].set_r(0);
-
-      }
-    }
 };

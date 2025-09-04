@@ -267,7 +267,7 @@ PauliString PauliString::substring(const Qubits& qubits, bool remove_qubits) con
     }
   }
 
-  p.set_r(get_r());
+  p.phase = phase;
   return p;
 }
 

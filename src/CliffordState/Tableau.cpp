@@ -9,30 +9,22 @@
 #include "QuantumState.h"
 #include "QuantumCircuit.h"
 
-Tableau::Tableau(uint32_t num_qubits) : track_destabilizers(true), num_qubits(num_qubits) {
-  rows = std::vector<PauliString>(2*num_qubits + 1, PauliString(num_qubits));
+Tableau::Tableau(uint32_t num_qubits) : num_qubits(num_qubits) {
+  stabilizers = std::vector<PauliString>(num_qubits, PauliString(num_qubits));
+  destabilizers = std::vector<PauliString>(num_qubits, PauliString(num_qubits));
   for (uint32_t i = 0; i < num_qubits; i++) {
-    rows[i].set_x(i, true);
-    rows[i + num_qubits].set_z(i, true);
-  }
-}
-
-uint32_t Tableau::num_rows() const { 
-  if (track_destabilizers) { 
-    return rows.size() - 1; 
-  } else {
-    return rows.size(); 
+    destabilizers[i].set_x(i, true);
+    stabilizers[i].set_z(i, true);
   }
 }
 
 Eigen::MatrixXi Tableau::to_matrix() const {
   Eigen::MatrixXi M(num_qubits, 2*num_qubits);
-  size_t offset = track_destabilizers ? num_qubits : 0;
 
-  for (size_t i = 0; i < num_qubits; i++) {
+  for (size_t i = 0; i < stabilizers.size(); i++) {
     for (size_t j = 0; j < num_qubits; j++) {
-      M(i, j) = get_z(i + offset, j);
-      M(i, j + num_qubits) = get_x(i + offset, j);
+      M(i, j) = stabilizers[i].get_z(j);
+      M(i, j + num_qubits) = stabilizers[i].get_x(j);
     }
   }
 
@@ -47,8 +39,7 @@ Statevector Tableau::to_statevector() const {
   Eigen::MatrixXcd dm = Eigen::MatrixXcd::Identity(1u << num_qubits, 1u << num_qubits);
   Eigen::MatrixXcd I = Eigen::MatrixXcd::Identity(1u << num_qubits, 1u << num_qubits);
 
-  for (uint32_t i = num_qubits; i < 2*num_qubits; i++) {
-    PauliString p = rows[i];
+  for (const PauliString& p : stabilizers) {
     Eigen::MatrixXcd g = p.to_matrix();
     dm = dm*((I + g)/2.0);
   }
@@ -68,18 +59,17 @@ bool Tableau::operator==(Tableau& other) {
   rref();
   other.rref();
 
-  int32_t r1 = track_destabilizers ? num_qubits : 0;
-  for (uint32_t i = r1; i < num_rows(); i++) {
-    if (get_r(i) != other.get_r(i)) {
+  for (uint32_t i = 0; i < stabilizers.size(); i++) {
+    if (stabilizers[i].get_r() != other.stabilizers[i].get_r()) {
       return false;
     }
 
     for (uint32_t j = 0; j < num_qubits; j++) {
-      if (get_z(i, j) != other.get_z(i, j)) {
+      if (stabilizers[i].get_z(j) != other.stabilizers[i].get_z(j)) {
         return false;
       }
 
-      if (get_x(i, j) != other.get_x(i, j)) {
+      if (stabilizers[i].get_x(j) != other.stabilizers[i].get_x(j)) {
         return false;
       }
     }
@@ -89,18 +79,15 @@ bool Tableau::operator==(Tableau& other) {
 }
 
 void Tableau::rref(const Qubits& sites) {
-  uint32_t r1 = track_destabilizers ? num_qubits : 0;
-  uint32_t r2 = num_rows();
-
   uint32_t pivot_row = 0;
-  uint32_t row = r1;
+  uint32_t row = 0;
 
   for (uint32_t k = 0; k < 2*sites.size(); k++) {
     uint32_t c = sites[k % sites.size()];
     bool z = k < sites.size();
     bool found_pivot = false;
-    for (uint32_t i = row; i < r2; i++) {
-      if ((z && rows[i].get_z(c)) || (!z && rows[i].get_x(c))) {
+    for (uint32_t i = row; i < stabilizers.size(); i++) {
+      if ((z && stabilizers[i].get_z(c)) || (!z && stabilizers[i].get_x(c))) {
         pivot_row = i;
         found_pivot = true;
         break;
@@ -108,15 +95,15 @@ void Tableau::rref(const Qubits& sites) {
     }
 
     if (found_pivot) {
-      std::swap(rows[row], rows[pivot_row]);
+      std::swap(stabilizers[row], stabilizers[pivot_row]);
 
-      for (uint32_t i = r1; i < r2; i++) {
+      for (uint32_t i = 0; i < stabilizers.size(); i++) {
         if (i == row) {
           continue;
         }
 
-        if ((z && rows[i].get_z(c)) || (!z && rows[i].get_x(c))) {
-          rowsum(i, row);
+        if ((z && stabilizers[i].get_z(c)) || (!z && stabilizers[i].get_x(c))) {
+          stabilizers[i] = stabilizers[i] * stabilizers[row];
         }
       }
 
@@ -128,18 +115,15 @@ void Tableau::rref(const Qubits& sites) {
 }
 
 void Tableau::xrref(const Qubits& sites) {
-  uint32_t r1 = track_destabilizers ? num_qubits : 0;
-  uint32_t r2 = num_rows();
-
   uint32_t pivot_row = 0;
-  uint32_t row = r1;
+  uint32_t row = 0;
 
   for (uint32_t k = 0; k < 2*sites.size(); k++) {
     uint32_t c = sites[k % sites.size()];
     bool z = k < sites.size();
     bool found_pivot = false;
-    for (uint32_t i = row; i < r2; i++) {
-      if (!z && rows[i].get_x(c)) {
+    for (uint32_t i = row; i < stabilizers.size(); i++) {
+      if (!z && stabilizers[i].get_x(c)) {
         pivot_row = i;
         found_pivot = true;
         break;
@@ -147,15 +131,15 @@ void Tableau::xrref(const Qubits& sites) {
     }
 
     if (found_pivot) {
-      std::swap(rows[row], rows[pivot_row]);
+      std::swap(stabilizers[row], stabilizers[pivot_row]);
 
-      for (uint32_t i = r1; i < r2; i++) {
+      for (uint32_t i = 0; i < stabilizers.size(); i++) {
         if (i == row) {
           continue;
         }
 
-        if (!z && rows[i].get_x(c)) {
-          rowsum(i, row);
+        if (!z && stabilizers[i].get_x(c)) {
+          stabilizers[i] = stabilizers[i] * stabilizers[row];
         }
       }
 
@@ -169,13 +153,10 @@ void Tableau::xrref(const Qubits& sites) {
 uint32_t Tableau::xrank(const Qubits& sites) {
   xrref(sites);
 
-  uint32_t r1 = track_destabilizers ? num_qubits : 0;
-  uint32_t r2 = num_rows();
-
   uint32_t r = 0;
-  for (uint32_t i = r1; i < r2; i++) {
+  for (uint32_t i = 0; i < stabilizers.size(); i++) {
     for (uint32_t j = 0; j < sites.size(); j++) {
-      if (rows[i].get_x(sites[j])) {
+      if (stabilizers[i].get_x(sites[j])) {
         r++;
         break;
       }
@@ -188,13 +169,10 @@ uint32_t Tableau::xrank(const Qubits& sites) {
 uint32_t Tableau::rank(const Qubits& sites) {
   rref(sites);
 
-  uint32_t r1 = track_destabilizers ? num_qubits : 0;
-  uint32_t r2 = num_rows();
-
   uint32_t r = 0;
-  for (uint32_t i = r1; i < r2; i++) {
+  for (uint32_t i = 0; i < stabilizers.size(); i++) {
     for (uint32_t j = 0; j < sites.size(); j++) {
-      if (rows[i].get_x(sites[j]) || rows[i].get_z(sites[j])) {
+      if (stabilizers[i].get_x(sites[j]) || stabilizers[i].get_z(sites[j])) {
         r++;
         break;
       }
@@ -228,43 +206,127 @@ uint32_t Tableau::xrank() {
   return xrank(qubits);
 }
 
+Tableau Tableau::partial_trace(const Qubits& qubits) {
+  rref(qubits);
+
+  Tableau tableau_new;
+  tableau_new.num_qubits = num_qubits - qubits.size();
+
+  Qubits qubits_complement = to_qubits(support_complement(qubits, num_qubits));
+
+  for (const PauliString& stab : stabilizers) {
+    bool is_id = true;
+    for (size_t i = 0; i < qubits.size(); i++) {
+      if (stab.get_x(qubits[i]) || stab.get_z(qubits[i])) {
+        is_id = false;
+        break;
+      }
+    }
+
+    if (is_id) {
+      tableau_new.stabilizers.push_back(stab.substring(qubits_complement, true));
+    }
+  }
+
+  return tableau_new;
+}
+
+double Tableau::bitstring_amplitude(const BitString& bits) {
+  if (bits.num_bits != num_qubits) {
+    throw std::runtime_error(fmt::format("Cannot evaluate a bitstring of {} bits on a Tableau of {} qubits.", bits.num_bits, num_qubits));
+  }
+
+  double p = 1/std::pow(2.0, xrank() + num_qubits - stabilizers.size());
+
+  bool in_support = true;
+  for (size_t r = 0; r < stabilizers.size(); r++) {
+    const PauliString& row = stabilizers[r];
+
+    // Need to check that every z-only stabilizer g acts on |z> as g|z> = |z>. 
+    bool has_x = false;
+    for (size_t i = 0; i < num_qubits; i++) {
+      if (row.get_x(i)) {
+        has_x = true;
+        break;
+      }
+    }
+
+    if (has_x) {
+      continue;
+    }
+
+    bool positive = true;
+    for (size_t i = 0; i < num_qubits; i++) {
+      if (row.get_z(i) && bits.get(i)) {
+        positive = !positive;
+      }
+    }
+
+    if (positive != (row.get_r() == 0)) {
+      in_support = false;
+      break;
+    }
+  }
+
+  return in_support ? p : 0.0;
+}
+
 std::string Tableau::to_string(bool print_destabilizers) const {
   std::string s = "";
-  uint32_t i1 = print_destabilizers ? 0 : num_qubits;
-  for (uint32_t i = i1; i < num_rows(); i++) {
-    s += (i == i1) ? "[" : " ";
-    s += rows[i].to_string();
-    s += (i == num_rows() - 1) ? "]" : "\n";
+  if (print_destabilizers) {
+    for (size_t i = 0; i < destabilizers.size(); i++) {
+      s += (i == 0) ? "[" : " ";
+      s += destabilizers[i].to_string();
+      s += (i == destabilizers.size() - 1) ? "]" : "\n";
+    }
   }
+
+  for (size_t i = 0; i < stabilizers.size(); i++) {
+    s += (i == 0) ? "[" : " ";
+    s += stabilizers[i].to_string();
+    s += (i == stabilizers.size() - 1) ? "]" : "\n";
+  }
+
   return s;
 }
 
 std::string Tableau::to_string_ops(bool print_destabilizers) const {
   std::string s = "";
-  uint32_t i1 = print_destabilizers ? 0 : num_qubits;
-  for (uint32_t i = i1; i < num_rows(); i++) {
-    s += (i == i1) ? "[" : " ";
-    s += "[" + rows[i].to_string_ops() + "]";
-    s += (i == num_rows() - 1) ? "]" : "\n";
+  if (print_destabilizers) {
+    for (size_t i = 0; i < destabilizers.size(); i++) {
+      s += (i == 0) ? "[" : " ";
+      s += destabilizers[i].to_string_ops();
+      s += (i == destabilizers.size() - 1) ? "]" : "\n";
+    }
   }
-  return s + "]";
-}
 
-void Tableau::rowsum(uint32_t h, uint32_t i) {
-  rows[h] = rows[h] * rows[i];
+  for (size_t i = 0; i < stabilizers.size(); i++) {
+    s += (i == 0) ? "[" : " ";
+    s += stabilizers[i].to_string_ops();
+    s += (i == stabilizers.size() - 1) ? "]" : "\n";
+  }
+  return s;
 }
 
 void Tableau::h(uint32_t a) {
   validate_qubit(a);
-  for (uint32_t i = 0; i < num_rows(); i++) {
-    rows[i].h(a);
+  for (PauliString& p : stabilizers) {
+    p.h(a);
+  }
+
+  for (PauliString& p : destabilizers) {
+    p.h(a);
   }
 }
 
 void Tableau::s(uint32_t a) {
   validate_qubit(a);
-  for (uint32_t i = 0; i < num_rows(); i++) {
-    rows[i].s(a);
+  for (PauliString& p : stabilizers) {
+    p.s(a);
+  }
+
+  for (PauliString& p : destabilizers) {
+    p.s(a);
   }
 }
 
@@ -276,30 +338,46 @@ void Tableau::sd(uint32_t a) {
 
 void Tableau::x(uint32_t a) {
   validate_qubit(a);
-  for (uint32_t i = 0; i < num_rows(); i++) {
-    rows[i].x(a);
+  for (PauliString& p : stabilizers) {
+    p.x(a);
+  }
+
+  for (PauliString& p : destabilizers) {
+    p.x(a);
   }
 }
 
 void Tableau::y(uint32_t a) {
   validate_qubit(a);
-  for (uint32_t i = 0; i < num_rows(); i++) {
-    rows[i].y(a);
+  for (PauliString& p : stabilizers) {
+    p.y(a);
+  }
+
+  for (PauliString& p : destabilizers) {
+    p.y(a);
   }
 }
 
 void Tableau::z(uint32_t a) {
   validate_qubit(a);
-  for (uint32_t i = 0; i < num_rows(); i++) {
-    rows[i].z(a);
+  for (PauliString& p : stabilizers) {
+    p.z(a);
+  }
+
+  for (PauliString& p : destabilizers) {
+    p.z(a);
   }
 }
 
 void Tableau::cx(uint32_t a, uint32_t b) {
   validate_qubit(a);
   validate_qubit(b);
-  for (uint32_t i = 0; i < num_rows(); i++) {
-    rows[i].cx(a, b);
+  for (PauliString& p : stabilizers) {
+    p.cx(a, b);
+  }
+
+  for (PauliString& p : destabilizers) {
+    p.cx(a, b);
   }
 }
 
@@ -310,13 +388,9 @@ void Tableau::cz(uint32_t a, uint32_t b) {
 }
 
 std::pair<bool, uint32_t> Tableau::mzr_deterministic(uint32_t a) const {
-  if (!track_destabilizers) {
-    throw std::invalid_argument("Cannot check mzr_deterministic without track_destabilizers.");
-  }
-
-  for (uint32_t p = num_qubits; p < 2*num_qubits; p++) {
+  for (uint32_t p = 0; p < stabilizers.size(); p++) {
     // Suitable p identified; outcome is random
-    if (get_x(p, a)) { 
+    if (stabilizers[p].get_x(a)) { 
       return std::pair(false, p);
     }
   }
@@ -327,42 +401,41 @@ std::pair<bool, uint32_t> Tableau::mzr_deterministic(uint32_t a) const {
 
 MeasurementData Tableau::mzr(uint32_t a, std::optional<bool> outcome) {
   validate_qubit(a);
-  if (!track_destabilizers) {
-    throw std::invalid_argument("Cannot mzr without track_destabilizers.");
-  }
 
   auto [deterministic, p] = mzr_deterministic(a);
 
   if (!deterministic) {
-    bool b;
-    if (outcome) {
-      b = outcome.value();
-    } else {
-      b = randi() % 2;
-    }
+    bool b = outcome ? outcome.value() : randi() % 2;
 
-    for (uint32_t i = 0; i < 2*num_qubits; i++) {
-      if (i != p && get_x(i, a)) {
-        rowsum(i, p);
+    for (uint32_t i = 0; i < stabilizers.size(); i++) {
+      if (i != p && stabilizers[i].get_x(a)) {
+        stabilizers[i] = stabilizers[i] * stabilizers[p];
       }
     }
 
-    std::swap(rows[p - num_qubits], rows[p]);
-    rows[p] = PauliString(num_qubits);
+    for (uint32_t i = 0; i < destabilizers.size(); i++) {
+      if (destabilizers[i].get_x(a)) {
+        destabilizers[i] = destabilizers[i] * stabilizers[p];
+      }
+    }
 
-    set_r(p, b);
-    set_z(p, a, true);
+    std::swap(stabilizers[p], destabilizers[p]);
+
+    stabilizers[p] = PauliString(num_qubits);
+    stabilizers[p].set_r(b ? 2 : 0);
+    stabilizers[p].set_z(a, true);
 
     return {b, 0.5};
   } else { // deterministic
-    rows[2*num_qubits] = PauliString(num_qubits);
-    for (uint32_t i = 0; i < num_qubits; i++) {
-      if (rows[i].get_x(a)) {
-        rowsum(2*num_qubits, i + num_qubits);
+    PauliString scratch(num_qubits);
+    for (uint32_t i = 0; i < stabilizers.size(); i++) {
+      if (destabilizers[i].get_x(a)) {
+        scratch = scratch * stabilizers[i];
       }
     }
 
-    bool b = get_r(2*num_qubits);
+    bool b = (scratch.get_r() == 2);
+
     if (outcome) {
       if (b != outcome.value()) {
         throw std::runtime_error("Invalid forced measurement of QuantumCHPState.");
@@ -375,12 +448,18 @@ MeasurementData Tableau::mzr(uint32_t a, std::optional<bool> outcome) {
 
 double Tableau::sparsity() const {
   float nonzero = 0;
-  for (uint32_t i = 0; i < num_rows(); i++) {
+  for (uint32_t i = 0; i < stabilizers.size(); i++) {
     for (uint32_t j = 0; j < num_qubits; j++) {
-      nonzero += rows[i].get_x(j);
-      nonzero += rows[i].get_z(j);
+      nonzero += stabilizers[i].get_x(j);
+      nonzero += stabilizers[i].get_z(j);
+    }
+  }
+  for (uint32_t i = 0; i < stabilizers.size(); i++) {
+    for (uint32_t j = 0; j < num_qubits; j++) {
+      nonzero += stabilizers[i].get_x(j);
+      nonzero += stabilizers[i].get_z(j);
     }
   }
 
-  return nonzero/(num_rows()*num_qubits*2);
+  return nonzero/((stabilizers.size() + destabilizers.size())*num_qubits*2);
 }
