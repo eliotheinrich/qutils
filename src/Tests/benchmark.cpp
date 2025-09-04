@@ -1,6 +1,7 @@
 #include "QuantumState.h"
 #include "CliffordState.h"
 #include <iostream>
+#include <chrono>
 
 #define GET_MACRO(_1, _2, NAME, ...) NAME
 #define ASSERT(...) GET_MACRO(__VA_ARGS__, ASSERT_TWO_ARGS, ASSERT_ONE_ARG)(__VA_ARGS__)
