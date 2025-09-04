@@ -106,7 +106,9 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
     void validate_qubits(const Qubits& qubits) const;
 
     virtual std::complex<double> expectation(const PauliString& pauli) const=0;
-    virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const=0;
+
+  // NOTE: the default implementation relies on computing the full probabilities(). Providing a more efficient implementation from child classes is important.
+    virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const;
 
     virtual std::shared_ptr<QuantumState> partial_trace(const Qubits& qubits) const=0;
     virtual std::shared_ptr<QuantumState> partial_trace(const QubitSupport& support) const {

@@ -419,6 +419,14 @@ MeasurementData QuantumGraphState::mzr(uint32_t a, std::optional<bool> outcome) 
   return {b, prob_outcome};
 }
 
+double QuantumGraphState::expectation(const BitString& bits, std::optional<QubitSupport> support) const {
+  return to_chp().expectation(bits, support);
+}
+
+std::vector<double> QuantumGraphState::probabilities() const {
+  return to_chp().probabilities();
+}
+
 void QuantumGraphState::toggle_edge_gate(uint32_t a, uint32_t b) {
   uint32_t ca = graph.get_val(a);
   uint32_t cb = graph.get_val(b);

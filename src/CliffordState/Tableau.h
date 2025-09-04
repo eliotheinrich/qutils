@@ -56,9 +56,6 @@ class Tableau {
 
     void rowsum(uint32_t h, uint32_t i);
 
-    //void evolve(const QuantumCircuit& qc);
-		//void evolve(const Instruction& inst);
-
     void h(uint32_t a);
     void s(uint32_t a);
     void sd(uint32_t a);

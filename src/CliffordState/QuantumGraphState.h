@@ -42,6 +42,8 @@ class QuantumGraphState : public CliffordState {
 
 
   public:
+    using CliffordState::expectation;
+
     uint32_t num_qubits;
     UndirectedGraph<int> graph;
 
@@ -67,6 +69,9 @@ class QuantumGraphState : public CliffordState {
     virtual void cz(uint32_t a, uint b) override;
     virtual double mzr_expectation(uint32_t a) const override;
     virtual MeasurementData mzr(uint32_t a, std::optional<bool> outcome=std::nullopt) override;
+
+    virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const override;
+		virtual std::vector<double> probabilities() const override;
 
     void mzr_graph(uint32_t a, bool outcome);
 

@@ -7,6 +7,8 @@
 
 class QuantumCHPState : public CliffordState {
   public:
+    using CliffordState::expectation;
+
     mutable Tableau tableau;
     int print_mode;
 
@@ -27,7 +29,6 @@ class QuantumCHPState : public CliffordState {
     virtual std::string to_string() const override;
 
     void rref();
-
     void xrref();
 
     void set_print_mode(const std::string& mode);
@@ -37,20 +38,19 @@ class QuantumCHPState : public CliffordState {
     Statevector to_statevector() const;
 
     virtual void h(uint32_t a) override;
-
     virtual void s(uint32_t a) override;
-
     virtual void sd(uint32_t a) override;
 
     virtual void cx(uint32_t a, uint32_t b) override;
-
     virtual void cy(uint32_t a, uint32_t b) override;
-
     virtual void cz(uint32_t a, uint32_t b) override;
 
     PauliString get_row(size_t i) const;
 
     std::vector<PauliString> stabilizers() const;
+
+    virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const override;
+		virtual std::vector<double> probabilities() const override;
 
     size_t size() const;
 
@@ -64,16 +64,13 @@ class QuantumCHPState : public CliffordState {
 
     virtual double entanglement(const QubitSupport& support, uint32_t index) override;
 
-    int xrank();
+    int xrank() const;
+    int partial_xrank(const Qubits& qubits) const;
 
-    int partial_xrank(const Qubits& qubits);
-
-    int rank();
-
-    int partial_rank(const Qubits& qubits);
+    int rank() const;
+    int partial_rank(const Qubits& qubits) const;
 
     void set_x(size_t i, size_t j, bool v);
-
     void set_z(size_t i, size_t j, bool v);
 
     std::vector<char> serialize() const override;

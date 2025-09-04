@@ -30,7 +30,7 @@ EvolveResult CliffordState::evolve(const QuantumCircuit& qc, EvolveOpts opts) {
 }
 
 std::optional<MeasurementData> CliffordState::evolve(const Instruction& inst) {
-  std::visit(quantumcircuit_utils::overloaded{
+  return std::visit(quantumcircuit_utils::overloaded{
       [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
         std::string name = gate->label();
 
@@ -60,12 +60,12 @@ std::optional<MeasurementData> CliffordState::evolve(const Instruction& inst) {
 
         return std::nullopt;
       },
-        [this](const Measurement& m) -> std::optional<MeasurementData> { 
-          return measure(m);
-        },
-        [this](const WeakMeasurement& m) -> std::optional<MeasurementData> {
-          throw std::runtime_error("Cannot perform weak measurements on Clifford states.");
-        }
+      [this](const Measurement& m) -> std::optional<MeasurementData> { 
+        return measure(m);
+      },
+      [this](const WeakMeasurement& m) -> std::optional<MeasurementData> {
+        throw std::runtime_error("Cannot perform weak measurements on Clifford states.");
+      }
   }, inst);
 }
 
@@ -250,57 +250,6 @@ std::complex<double> CliffordState::expectation(const PauliString& pauli) const 
   self->evolve(qc.adjoint());
 
   return std::complex<double>(exp, 0.0);
-}
-
-double CliffordState::expectation(const BitString& bits, std::optional<QubitSupport> support) const {
-  throw std::runtime_error("Not yet implemented!");
-}
-
-std::vector<BitAmplitudes> CliffordState::sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) const {
-  if (num_qubits > 15) {
-    throw std::runtime_error("Cannot sample bitstrings for Clifford state with n > 15 qubits.");
-  }
-
-  std::vector<double> probs = probabilities();
-  auto marginal_probs = marginal_probabilities(supports);
-
-  std::discrete_distribution<> dist(probs.begin(), probs.end()); 
-  std::minstd_rand rng(randi());
-
-  std::vector<BitAmplitudes> samples;
-
-  for (size_t i = 0; i < num_samples; i++) {
-    size_t z = dist(rng);
-    BitString bits = BitString::from_bits(z, num_qubits);
-    std::vector<double> amplitudes = {probs[z]};
-    for (size_t n = 0; n < supports.size(); n++) {
-      amplitudes[n-1] = marginal_probs[n][z];
-    }
-
-    samples.push_back({bits, amplitudes});
-  }
-
-  return samples;
-}
-
-std::vector<double> CliffordState::probabilities() const {
-  if (num_qubits > 15) {
-    throw std::runtime_error("Cannot generate probabilities for Clifford state with n > 15 qubits.");
-  }
-
-  size_t b = 1u << num_qubits;
-  std::vector<double> probs(b);
-  for (size_t i = 0; i < b; i++) {
-    double p = 1.0;
-    for (size_t q = 0; q < num_qubits; q++) {
-      if (std::abs(mzr_expectation(q)) < 1e-5) {
-        p *= 0.5;
-      }
-    }
-    probs[i] = p;
-  }
-
-  return probs;
 }
 
 double CliffordState::purity() const {

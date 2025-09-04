@@ -58,12 +58,6 @@ class CliffordState : public QuantumState {
 
     // NOTE: the sign of this is not guaranteed, since generic Clifford states do not track global phase
     virtual std::complex<double> expectation(const PauliString& pauli) const override;
-    virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const override;
-
-    // TEST THIS
-    virtual std::vector<BitAmplitudes> sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) const override;
-
-		virtual std::vector<double> probabilities() const override;
 
     virtual double purity() const override;
 

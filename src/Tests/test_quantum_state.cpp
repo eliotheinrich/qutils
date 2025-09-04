@@ -1577,11 +1577,13 @@ bool test_bitstring_expectation() {
 
   for (size_t i = 0; i < 100; i++) {
     BitString bits = BitString::random(nqb);
-    auto d1 = rho.expectation(bits);
-    auto d2 = psi.expectation(bits);
-    auto d3 = mps.expectation(bits);
+    double d1 = rho.expectation(bits);
+    double d2 = psi.expectation(bits);
+    double d3 = mps.expectation(bits);
 
-    ASSERT(is_close(d1, d2, d3), fmt::format("Bits {} disagree: {:.6f}, {:.6f}, {:.6f}", bits, d1, d2, d3));
+    double c = psi.QuantumState::expectation(bits);
+
+    ASSERT(is_close(d1, d2, d3, c), fmt::format("Bits {} disagree: {:.6f}, {:.6f}, {:.6f}", bits, d1, d2, d3));
   }
 
   return true;
@@ -1814,6 +1816,40 @@ bool test_extended_majorana_state() {
   return true;
 }
 
+
+bool test_chp_probs() {
+  constexpr size_t nqb = 4;
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc(nqb);
+    qc.random_clifford({0, 1, 2, 3});
+
+    Statevector psi(nqb);
+    QuantumCHPState chp(nqb);
+
+    psi.evolve(qc);
+    chp.evolve(qc);
+
+    auto p1 = psi.probabilities();
+    auto p2 = chp.probabilities();
+
+    for (size_t z = 0; z < p1.size(); z++) {
+      ASSERT(is_close(p1[z], p2[z]));
+    }
+
+    for (size_t z = 0; z < 100; z++) {
+      BitString bits = BitString::from_bits(nqb, randi(0, 1u << nqb));
+      QubitSupport support = random_qubits(nqb, randi(1, nqb));
+
+      double d1 = psi.expectation(bits, support);
+      double d2 = chp.expectation(bits, support);
+      std::cout << fmt::format("d = {}, {}\n", d1, d2);
+      ASSERT(is_close(d1, d2));
+    }
+  }
+
+  return true;
+}
+
 using TestResult = std::tuple<bool, int>;
 
 #define ADD_TEST(x)                                                               \
@@ -1877,6 +1913,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_sv_entanglement);
   ADD_TEST(test_free_fermion_state);
   ADD_TEST(test_measurement_record);
+  ADD_TEST(test_chp_probs);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

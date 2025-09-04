@@ -79,6 +79,11 @@ std::vector<std::vector<double>> QuantumState::partial_probabilities(const std::
   return partials;
 }
 
+double QuantumState::expectation(const BitString& bits, std::optional<QubitSupport> support) const {
+  auto probs = probabilities();
+  return probs[bits.to_integer()];
+}
+
 std::vector<BitAmplitudes> QuantumState::sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) const {
   auto marginals = marginal_probabilities(supports);
   auto probs = marginals[0];

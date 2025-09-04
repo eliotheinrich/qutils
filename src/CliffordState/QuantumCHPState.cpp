@@ -78,6 +78,63 @@ PauliString QuantumCHPState::get_row(size_t i) const {
   return tableau.rows[i];
 }
 
+double QuantumCHPState::expectation(const BitString& bits, std::optional<QubitSupport> support) const {
+  Qubits qubits;
+  if (support) {
+    qubits = to_qubits(support.value());
+  } else {
+    qubits = Qubits(num_qubits);
+    std::iota(qubits.begin(), qubits.end(), 0);
+  }
+  double p = 1/std::pow(2.0, partial_xrank(qubits));
+
+  bool in_support = true;
+  for (size_t q = 0; q < num_qubits; q++) {
+    // Need to check that every z-only stabilizer g acts on |z> as g|z> = |z>. 
+    const PauliString& row = tableau.rows[q + num_qubits];
+    bool has_x = false;
+    for (size_t i = 0; i < num_qubits; i++) {
+      if (row.get_x(i)) {
+        has_x = true;
+      }
+    }
+
+    if (has_x) {
+      continue;
+    }
+
+    // row is now z-only. Count the active bits acted on by a Z-operator
+
+    bool positive = true;
+    for (size_t i = 0; i < num_qubits; i++) {
+      if (row.get_z(i) && bits.get(i)) {
+        positive = !positive;
+      }
+    }
+
+    if (positive != (row.get_r() == 0)) {
+      in_support = false;
+      break;
+    }
+  }
+
+  return in_support ? p : 0.0;
+}
+
+std::vector<double> QuantumCHPState::probabilities() const {
+  double p = 1/std::pow(2.0, xrank());
+
+  size_t b = 1u << num_qubits;
+  std::vector<double> probs(b);
+
+  for (size_t z = 0; z < b; z++) {
+    BitString bits = BitString::from_bits(num_qubits, z);
+    probs[z] = expectation(bits);
+  }
+
+  return probs;
+}
+
 std::vector<PauliString> QuantumCHPState::stabilizers() const {
   std::vector<PauliString> stabs(tableau.rows.begin() + num_qubits, tableau.rows.end() - 1);
   return stabs;
@@ -135,23 +192,23 @@ double QuantumCHPState::entanglement(const QubitSupport& support, uint32_t index
   return static_cast<double>(s);
 }
 
-int QuantumCHPState::xrank() {
+int QuantumCHPState::xrank() const {
   Qubits qubits(num_qubits);
   std::iota(qubits.begin(), qubits.end(), 0);
   return tableau.xrank(qubits);
 }
 
-int QuantumCHPState::partial_xrank(const Qubits& qubits) {
+int QuantumCHPState::partial_xrank(const Qubits& qubits) const {
   return tableau.xrank(qubits);
 }
 
-int QuantumCHPState::rank() {
+int QuantumCHPState::rank() const {
   Qubits qubits(num_qubits);
   std::iota(qubits.begin(), qubits.end(), 0);
   return tableau.rank(qubits);
 }
 
-int QuantumCHPState::partial_rank(const Qubits& qubits) {
+int QuantumCHPState::partial_rank(const Qubits& qubits) const {
   return tableau.rank(qubits);
 }
 
