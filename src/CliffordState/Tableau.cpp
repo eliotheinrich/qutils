@@ -254,53 +254,53 @@ void Tableau::rowsum(uint32_t h, uint32_t i) {
   rows[h] = rows[h] * rows[i];
 }
 
-void Tableau::evolve(const QuantumCircuit& qc) {
-  if (!qc.is_clifford()) {
-    throw std::runtime_error("Provided circuit is not Clifford.");
-  }
-
-  for (auto const &inst : qc.instructions) {
-    evolve(inst);
-  }
-}
-
-void Tableau::evolve(const Instruction& inst) {
-  std::visit(quantumcircuit_utils::overloaded{
-    [this](std::shared_ptr<Gate> gate) { 
-    std::string name = gate->label();
-
-    if (name == "H") {
-    h(gate->qubits[0]);
-    } else if (name == "S") {
-    s(gate->qubits[0]);
-    } else if (name == "X") {
-    x(gate->qubits[0]);
-    } else if (name == "Y") {
-    y(gate->qubits[0]);
-    } else if (name == "Z") {
-    z(gate->qubits[0]);
-    } else if (name == "Sd") {
-    sd(gate->qubits[0]);
-    } else if (name == "CX") {
-    cx(gate->qubits[0], gate->qubits[1]);
-    } else if (name == "CZ") {
-    cz(gate->qubits[0], gate->qubits[1]);
-    } else {
-      throw std::runtime_error(fmt::format("Invalid instruction \"{}\" provided to Tableau.evolve.", name));
-    }
-    },
-      [this](const Measurement& m) { 
-        if (!m.is_basis()) {
-          throw std::runtime_error("Currently, can only perform measurements in computational basis on Clifford states.");
-        }
-
-        mzr(m.qubits[0]);
-      },
-      [this](const WeakMeasurement& m) {
-        throw std::runtime_error("Cannot perform weak measurements on Clifford states.");
-      },
-  }, inst);
-}
+//void Tableau::evolve(const QuantumCircuit& qc) {
+//  if (!qc.is_clifford()) {
+//    throw std::runtime_error("Provided circuit is not Clifford.");
+//  }
+//
+//  for (auto const &inst : qc.instructions) {
+//    evolve(inst);
+//  }
+//}
+//
+//void Tableau::evolve(const Instruction& inst) {
+//  std::visit(quantumcircuit_utils::overloaded{
+//    [this](std::shared_ptr<Gate> gate) { 
+//    std::string name = gate->label();
+//
+//    if (name == "H") {
+//    h(gate->qubits[0]);
+//    } else if (name == "S") {
+//    s(gate->qubits[0]);
+//    } else if (name == "X") {
+//    x(gate->qubits[0]);
+//    } else if (name == "Y") {
+//    y(gate->qubits[0]);
+//    } else if (name == "Z") {
+//    z(gate->qubits[0]);
+//    } else if (name == "Sd") {
+//    sd(gate->qubits[0]);
+//    } else if (name == "CX") {
+//    cx(gate->qubits[0], gate->qubits[1]);
+//    } else if (name == "CZ") {
+//    cz(gate->qubits[0], gate->qubits[1]);
+//    } else {
+//      throw std::runtime_error(fmt::format("Invalid instruction \"{}\" provided to Tableau.evolve.", name));
+//    }
+//    },
+//      [this](const Measurement& m) { 
+//        if (!m.is_basis()) {
+//          throw std::runtime_error("Currently, can only perform measurements in computational basis on Clifford states.");
+//        }
+//
+//        mzr(m.qubits[0]);
+//      },
+//      [this](const WeakMeasurement& m) {
+//        throw std::runtime_error("Cannot perform weak measurements on Clifford states.");
+//      },
+//  }, inst);
+//}
 
 void Tableau::h(uint32_t a) {
   validate_qubit(a);
@@ -373,12 +373,11 @@ std::pair<bool, uint32_t> Tableau::mzr_deterministic(uint32_t a) const {
   return std::pair(true, 0);
 }
 
-bool Tableau::mzr(uint32_t a, std::optional<bool> outcome) {
+MeasurementData Tableau::mzr(uint32_t a, std::optional<bool> outcome) {
   validate_qubit(a);
   if (!track_destabilizers) {
     throw std::invalid_argument("Cannot mzr without track_destabilizers.");
   }
-
 
   auto [deterministic, p] = mzr_deterministic(a);
 
@@ -402,7 +401,7 @@ bool Tableau::mzr(uint32_t a, std::optional<bool> outcome) {
     set_r(p, b);
     set_z(p, a, true);
 
-    return b;
+    return {b, 0.5};
   } else { // deterministic
     rows[2*num_qubits] = PauliString(num_qubits);
     for (uint32_t i = 0; i < num_qubits; i++) {
@@ -417,8 +416,8 @@ bool Tableau::mzr(uint32_t a, std::optional<bool> outcome) {
         throw std::runtime_error("Invalid forced measurement of QuantumCHPState.");
       }
     }
-
-    return b;
+    
+    return {b, 1.0};
   }
 }
 

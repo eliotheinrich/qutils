@@ -58,7 +58,7 @@ class QuantumCHPState : public CliffordState {
 
     virtual double mzr_expectation(uint32_t a) const override;
 
-    virtual bool mzr(uint32_t a, std::optional<bool> outcome=std::nullopt) override;
+    virtual MeasurementData mzr(uint32_t a, std::optional<bool> outcome=std::nullopt) override;
 
     virtual double sparsity() const override;
 

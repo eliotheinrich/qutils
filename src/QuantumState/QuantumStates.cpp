@@ -1,5 +1,40 @@
 #include "QuantumStates.h"
 
+bool QuantumState::get_dir(const EvolveOpts& opts) {
+  std::string direction = opts.dag_direction;
+
+  bool dir;
+  if (direction == "random") {
+    return randf() < 0.5;
+  } else if (direction == "left") {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+EvolveResult QuantumState::process_measurement_results(const std::vector<MeasurementData>& measurements, const EvolveOpts& opts) {
+  if (opts.return_measurement_outcomes && opts.return_measurement_probabilities) {
+    return measurements;
+  } else if (opts.return_measurement_outcomes) {
+    std::vector<bool> outcomes(measurements.size());
+    size_t i = 0;
+    for (const auto& [outcome, prob] : measurements) {
+      outcomes[i++] = outcome;
+    }
+    return outcomes;
+  } else if (opts.return_measurement_probabilities) {
+    std::vector<double> probabilities(measurements.size());
+    size_t i = 0; 
+    for (const auto& [outcome, prob] : measurements) {
+      probabilities[i++] = prob;
+    }
+    return probabilities;
+  } else {
+    return std::nullopt;
+  }
+}
+
 std::vector<std::vector<double>> QuantumState::marginal_probabilities(const std::vector<QubitSupport>& supports) const {
   size_t num_supports = supports.size();
 
@@ -188,31 +223,38 @@ void QuantumState::evolve_diagonal(const Eigen::VectorXcd& gate) {
   evolve(Eigen::MatrixXcd(gate.asDiagonal())); 
 }
 
-void QuantumState::evolve(const Instruction& inst) {
-  std::visit(quantumcircuit_utils::overloaded{
-    [this](std::shared_ptr<Gate> gate) { 
+std::optional<MeasurementData> QuantumState::evolve(const Instruction& inst) {
+  return std::visit(quantumcircuit_utils::overloaded{
+    [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
       _evolve(gate->define(), gate->qubits); 
+      return std::nullopt;
     },
-    [this](Measurement m) { 
-      measure(m);
+    [this](const Measurement& m) -> std::optional<MeasurementData> { 
+      return measure(m);
     },
-    [this](WeakMeasurement m) {
-      weak_measure(m);
+    [this](const WeakMeasurement& m) -> std::optional<MeasurementData> {
+      return weak_measure(m);
     }
   }, inst);
 }
 
-void QuantumState::evolve(const QuantumCircuit& circuit) {
+EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) {
   if (circuit.num_params() > 0) {
     throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve Statevector.");
   }
 
+  std::vector<MeasurementData> measurements;
   for (auto const &inst : circuit.instructions) {
-    evolve(inst);
-  }
+    auto result = evolve(inst);
+    if (result) {
+      measurements.push_back(result.value());
+    }
+  }  
+
+  return process_measurement_results(measurements, opts);
 }
 
-void QuantumState::evolve(const QuantumCircuit& qc, const Qubits& qubits) {
+EvolveResult QuantumState::evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts) {
   if (qubits.size() != qc.get_num_qubits()) {
     throw std::runtime_error("Provided qubits do not match size of circuit.");
   }
@@ -221,7 +263,7 @@ void QuantumState::evolve(const QuantumCircuit& qc, const Qubits& qubits) {
   qc_mapped.resize(num_qubits);
   qc_mapped.apply_qubit_map(qubits);
 
-  evolve(qc_mapped);
+  return evolve(qc_mapped, opts);
 }
 
 bool QuantumState::check_forced_measure(bool& outcome, double prob_zero) {
@@ -234,10 +276,10 @@ bool QuantumState::check_forced_measure(bool& outcome, double prob_zero) {
   return false;
 }
 
-bool QuantumState::measure(const Qubits& qubits, std::optional<PauliString> pauli, std::optional<bool> outcome) {
+MeasurementData QuantumState::measure(const Qubits& qubits, std::optional<PauliString> pauli, std::optional<bool> outcome) {
   return measure(Measurement(qubits, pauli, outcome));
 }
 
-bool QuantumState::weak_measure(const Qubits& qubits, double beta, std::optional<PauliString> pauli, std::optional<bool> outcome) {
+MeasurementData QuantumState::weak_measure(const Qubits& qubits, double beta, std::optional<PauliString> pauli, std::optional<bool> outcome) {
   return weak_measure(WeakMeasurement(qubits, beta, pauli, outcome));
 }

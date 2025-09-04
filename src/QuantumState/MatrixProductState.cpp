@@ -1726,10 +1726,11 @@ class MatrixProductStateImpl {
       return MeasurementResult(proj, prob_zero, b);
     }
 
-    bool measure(const Measurement& m) {
+    MeasurementData measure(const Measurement& m) {
       auto result = measurement_result(m);
       apply_measure(result, m.qubits);
-      return result.outcome;
+      double prob_outcome = result.outcome ? (1.0 - result.prob_zero) : result.prob_zero;
+      return {result.outcome, prob_outcome};
     }
 
     MeasurementResult weak_measurement_result(const WeakMeasurement& m) {
@@ -1763,10 +1764,11 @@ class MatrixProductStateImpl {
       return MeasurementResult(proj, prob_zero, b);
     }
 
-    bool weak_measure(const WeakMeasurement& m) {
+    MeasurementData weak_measure(const WeakMeasurement& m) {
       auto result = weak_measurement_result(m);
       apply_measure(result, m.qubits);
-      return result.outcome;
+      double prob_outcome = result.outcome ? (1.0 - result.prob_zero) : result.prob_zero;
+      return {result.outcome, prob_outcome};
     }
 
     // ======================================= DEBUG FUNCTIONS ======================================= //
@@ -2162,27 +2164,6 @@ void MatrixProductState::evolve(const Eigen::MatrixXcd& gate, const Qubits& qubi
   impl->evolve(gate, qubits);
 }
 
-void MatrixProductState::evolve(const QuantumCircuit& circuit) { 
-  bool dir = get_dir();
-  QuantumCircuit simple = circuit.simplify(dir);
-  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-  QuantumState::evolve(simple);
-}
-
-void MatrixProductState::evolve(const QuantumCircuit& circuit, const Qubits& qubits) {
-  bool dir = get_dir();
-  QuantumCircuit simple = circuit.simplify(dir);
-  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-  if (simple.is_unitary() && qubits.size() < 4) {
-    Eigen::MatrixXcd matrix = simple.to_matrix();
-    evolve(matrix, qubits);
-  } else {
-    QuantumState::evolve(simple, qubits);
-  }
-}
-
 std::vector<double> MatrixProductState::probabilities() const {
   if (impl->is_pure_state()) {
     Statevector psi(*this);
@@ -2197,11 +2178,11 @@ double MatrixProductState::purity() const {
   return impl->purity();
 }
 
-bool MatrixProductState::measure(const Measurement& m) {
+MeasurementData MatrixProductState::measure(const Measurement& m) {
   return impl->measure(m);
 }
 
-bool MatrixProductState::weak_measure(const WeakMeasurement& m) {
+MeasurementData MatrixProductState::weak_measure(const WeakMeasurement& m) {
   return impl->weak_measure(m);
 }
 

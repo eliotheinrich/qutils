@@ -196,6 +196,87 @@ bool test_pauli() {
   return true;
 }
 
+bool test_parametrized_circuit() {
+  constexpr size_t nqb = 6;
+
+
+  for (size_t i = 0; i < 10; i++) {
+    size_t num_gates = 10;
+    std::vector<double> parameters(num_gates);
+
+    QuantumCircuit qc1(nqb);
+    QuantumCircuit qc2(nqb);
+    for (size_t j = 0; j < num_gates; j++) {
+      parameters[j] = randf() * M_PI;
+      double p = randf();
+      if (p < 0.25) {
+        uint32_t q = randi(0, nqb);
+        qc1.rx(q);
+        qc2.rx(q, parameters[j]);
+      } else if (p < 0.5) {
+        uint32_t q = randi(0, nqb);
+        qc1.ry(q);
+        qc2.ry(q, parameters[j]);
+      } else if (p < 0.75) {
+        uint32_t q = randi(0, nqb);
+        qc1.rz(q);
+        qc2.rz(q, parameters[j]);
+      } else {
+        size_t n = randi(1, 4);
+        Qubits qubits = random_qubits(nqb, n);
+        PauliString pauli = PauliString::randh(n);
+        qc1.rp(qubits, pauli);
+        qc2.rp(qubits, pauli, parameters[j]);
+      }
+    }
+
+    QuantumCircuit qc1_ = qc1.bind_params(parameters);
+
+    ASSERT(qc1_.to_matrix().isApprox(qc2.to_matrix()));
+    ASSERT(qc1_.to_matrix().adjoint().isApprox(qc2.adjoint().to_matrix()));
+  }
+
+  return true;
+}
+
+double objective(const std::vector<double>& params) {
+  return std::pow(params[0] - 3.0, 2);
+}
+
+// Gradient of f(x): df/dx = 2(x - 3)
+std::vector<double> gradient(const std::vector<double>& params) {
+  return { 2.0 * (params[0] - 3.0) };
+}
+
+bool test_adam() {
+  // Initialize optimizer
+  ADAMOptimizer opt;
+
+  // Start with parameter far from optimum
+  std::vector<double> params = {0.0};
+
+  std::cout << "Initial value: f(" << params[0] << ") = " 
+    << objective(params) << "\n";
+
+  // Run optimization for 100 steps
+  for (int step = 1; step <= 1000; step++) {
+    auto grads = gradient(params);
+    params = opt.step(params, grads);
+
+    if (step % 10 == 0) {
+      std::cout << "Step " << step 
+        << " | x = " << params[0] 
+        << " | f(x) = " << objective(params) 
+        << "\n";
+    }
+  }
+
+  std::cout << "Final result: x ≈ " << params[0] 
+    << ", f(x) ≈ " << objective(params) << "\n";
+
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   std::map<std::string, TestResult> tests;
   std::set<std::string> test_names;
@@ -217,6 +298,8 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_qc_canonical);
   ADD_TEST(test_qc_simplify);
   ADD_TEST(test_pauli);
+  ADD_TEST(test_parametrized_circuit);
+  ADD_TEST(test_adam);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

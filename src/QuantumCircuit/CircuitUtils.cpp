@@ -147,3 +147,55 @@ Eigen::MatrixXcd normalize_unitary(Eigen::MatrixXcd &unitary) {
 
   return Q;
 }
+
+ADAMOptimizer::ADAMOptimizer(
+  double learning_rate, double beta1, double beta2, double epsilon,
+  bool noisy_gradients, double gradient_noise
+) : learning_rate(learning_rate), beta1(beta1), beta2(beta2), epsilon(epsilon), noisy_gradients(noisy_gradients), gradient_noise(gradient_noise) {
+  this->generator.seed(randi());
+  this->noise_distribution = std::normal_distribution<double>(0.0, this->gradient_noise);
+
+  this->params_initialized = false;
+  this->num_params = 0;
+}
+
+void ADAMOptimizer::initialize(size_t num_params) {
+  t = 1;
+  params_initialized = true;
+  m.resize(num_params, 0.0);
+  v.resize(num_params, 0.0);
+  this->num_params = num_params;
+}
+
+std::vector<double> ADAMOptimizer::step(const std::vector<double>& params, const std::vector<double>& gradients_) {
+  uint32_t num_params = params.size();
+  if (num_params != gradients_.size()) {
+    throw std::runtime_error("Mismatched number of parameters and number of gradients.");
+  }
+
+  if (!params_initialized) {
+    initialize(num_params);
+  }
+
+  std::vector<double> gradients = gradients_;
+  if (noisy_gradients) {
+    for (uint32_t i = 0; i < num_params; i++) {
+      gradients[i] += noise_distribution(generator);
+    }
+  }
+
+  std::vector<double> new_params(num_params);
+
+  for (uint32_t i = 0; i < num_params; i++) {
+    m[i] = beta1 * m[i] + (1 - beta1) * gradients[i];
+    v[i] = beta2 * v[i] + (1 - beta2) * std::pow(gradients[i], 2.0);
+
+    double m_hat = m[i] / (1 - std::pow(beta1, t));
+    double v_hat = v[i] / (1 - std::pow(beta2, t));
+
+    new_params[i] = params[i] - learning_rate * m_hat / (std::sqrt(v_hat) + epsilon);
+  }
+  
+  t++;
+  return new_params;
+}

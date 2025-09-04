@@ -1,7 +1,7 @@
 #include "CliffordState.h"
 #include <algorithm>
 
-void CliffordState::evolve(const QuantumCircuit& qc, const Qubits& qubits) {
+EvolveResult CliffordState::evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts) {
   if (qubits.size() != qc.get_num_qubits()) {
     throw std::runtime_error("Provided qubits do not match size of circuit.");
   }
@@ -10,52 +10,60 @@ void CliffordState::evolve(const QuantumCircuit& qc, const Qubits& qubits) {
   qc_mapped.resize(num_qubits);
   qc_mapped.apply_qubit_map(qubits);
 
-  evolve(qc_mapped);
+  return evolve(qc_mapped);
 }
 
-void CliffordState::evolve(const QuantumCircuit& qc) {
+EvolveResult CliffordState::evolve(const QuantumCircuit& qc, EvolveOpts opts) {
   if (!qc.is_clifford()) {
     throw std::runtime_error("Provided circuit is not Clifford.");
   }
 
+  std::vector<MeasurementData> measurements;
   for (auto const &inst : qc.instructions) {
-    evolve(inst);
+    auto result = evolve(inst);
+    if (result) {
+      measurements.push_back(result.value());
+    }
   }
+  
+  return process_measurement_results(measurements, opts);
 }
 
-void CliffordState::evolve(const Instruction& inst) {
+std::optional<MeasurementData> CliffordState::evolve(const Instruction& inst) {
   std::visit(quantumcircuit_utils::overloaded{
-      [this](std::shared_ptr<Gate> gate) { 
-      std::string name = gate->label();
+      [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
+        std::string name = gate->label();
 
-      if (name == "H") {
-      h(gate->qubits[0]);
-      } else if (name == "S") {
-      s(gate->qubits[0]);
-      } else if (name == "Sd") {
-      sd(gate->qubits[0]);
-      } else if (name == "CX") {
-      cx(gate->qubits[0], gate->qubits[1]);
-      } else if (name == "X") {
-      x(gate->qubits[0]);
-      } else if (name == "Y") {
-      y(gate->qubits[0]);
-      } else if (name == "Z") {
-      z(gate->qubits[0]);
-      } else if (name == "CY") {
-      cy(gate->qubits[0], gate->qubits[1]);
-      } else if (name == "CZ") {
-        cz(gate->qubits[0], gate->qubits[1]);
-      } else if (name == "SWAP") {
-        swap(gate->qubits[0], gate->qubits[1]);
-      } else {
-        throw std::runtime_error(fmt::format("Invalid instruction \"{}\" provided to CliffordState.evolve.", name));
-      }
+        if (name == "H") {
+          h(gate->qubits[0]);
+        } else if (name == "S") {
+          s(gate->qubits[0]);
+        } else if (name == "Sd") {
+          sd(gate->qubits[0]);
+        } else if (name == "CX") {
+          cx(gate->qubits[0], gate->qubits[1]);
+        } else if (name == "X") {
+          x(gate->qubits[0]);
+        } else if (name == "Y") {
+          y(gate->qubits[0]);
+        } else if (name == "Z") {
+          z(gate->qubits[0]);
+        } else if (name == "CY") {
+          cy(gate->qubits[0], gate->qubits[1]);
+        } else if (name == "CZ") {
+          cz(gate->qubits[0], gate->qubits[1]);
+        } else if (name == "SWAP") {
+          swap(gate->qubits[0], gate->qubits[1]);
+        } else {
+          throw std::runtime_error(fmt::format("Invalid instruction \"{}\" provided to CliffordState.evolve.", name));
+        }
+
+        return std::nullopt;
       },
-        [this](const Measurement& m) { 
-          measure(m);
+        [this](const Measurement& m) -> std::optional<MeasurementData> { 
+          return measure(m);
         },
-        [this](const WeakMeasurement& m) {
+        [this](const WeakMeasurement& m) -> std::optional<MeasurementData> {
           throw std::runtime_error("Cannot perform weak measurements on Clifford states.");
         }
   }, inst);
@@ -189,23 +197,23 @@ double CliffordState::myr_expectation() {
   return e/num_qubits;
 }
 
-bool CliffordState::mxr(uint32_t a, std::optional<bool> outcome) {
+MeasurementData CliffordState::mxr(uint32_t a, std::optional<bool> outcome) {
   h(a);
-  bool b = mzr(a, outcome);
+  auto result = mzr(a, outcome);
   h(a);
-  return b;
+  return result;
 }
 
-bool CliffordState::myr(uint32_t a, std::optional<bool> outcome) {
+MeasurementData CliffordState::myr(uint32_t a, std::optional<bool> outcome) {
   s(a);
   h(a);
-  bool b = mzr(a, outcome);
+  auto result = mzr(a, outcome);
   h(a);
   sd(a);
-  return b;
+  return result;
 }
 
-bool CliffordState::measure(const Measurement& m) {
+MeasurementData CliffordState::measure(const Measurement& m) {
   if (m.is_basis()) {
     return mzr(m.qubits[0]);
   } else {
@@ -217,14 +225,14 @@ bool CliffordState::measure(const Measurement& m) {
     uint32_t q = std::ranges::min(m.qubits);
 
     evolve(qc, m.qubits);
-    bool outcome = mzr(q, m.outcome);
+    auto result = mzr(q, m.outcome);
     evolve(qc.adjoint(), m.qubits);
 
-    return outcome;
+    return result;
   }
 }
 
-bool CliffordState::weak_measure(const WeakMeasurement& m) {
+MeasurementData CliffordState::weak_measure(const WeakMeasurement& m) {
   throw std::runtime_error("Cannot call a weak measurement on a Clifford state.");
 }
 

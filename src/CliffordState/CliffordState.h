@@ -16,9 +16,9 @@ class CliffordState : public QuantumState {
     CliffordState(uint32_t num_qubits) : QuantumState(num_qubits), num_qubits(num_qubits) {}
     virtual ~CliffordState() {}
 
-    virtual void evolve(const QuantumCircuit& qc, const Qubits& qubits) override;
-    virtual void evolve(const QuantumCircuit& qc) override;
-		virtual void evolve(const Instruction& inst) override;
+    virtual EvolveResult evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override;
+    virtual EvolveResult evolve(const QuantumCircuit& qc, EvolveOpts opts=EvolveOpts()) override;
+		virtual std::optional<MeasurementData> evolve(const Instruction& inst) override;
     virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
 
     virtual void h(uint32_t a)=0;
@@ -47,14 +47,14 @@ class CliffordState : public QuantumState {
     virtual double myr_expectation(uint32_t a);
     virtual double myr_expectation();
 
-    virtual bool mzr(uint32_t a, std::optional<bool> outcome=std::nullopt)=0;
-    virtual bool mxr(uint32_t a, std::optional<bool> outcome=std::nullopt);
-    virtual bool myr(uint32_t a, std::optional<bool> outcome=std::nullopt);
+    virtual MeasurementData mzr(uint32_t a, std::optional<bool> outcome=std::nullopt)=0;
+    virtual MeasurementData mxr(uint32_t a, std::optional<bool> outcome=std::nullopt);
+    virtual MeasurementData myr(uint32_t a, std::optional<bool> outcome=std::nullopt);
 
     virtual double sparsity() const=0;
 
-    virtual bool measure(const Measurement& m) override;
-    virtual bool weak_measure(const WeakMeasurement& m) override;
+    virtual MeasurementData measure(const Measurement& m) override;
+    virtual MeasurementData weak_measure(const WeakMeasurement& m) override;
 
     // NOTE: the sign of this is not guaranteed, since generic Clifford states do not track global phase
     virtual std::complex<double> expectation(const PauliString& pauli) const override;

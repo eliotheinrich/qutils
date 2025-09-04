@@ -41,13 +41,53 @@ struct MeasurementResult {
   : proj(proj), prob_zero(prob_zero), outcome(outcome) {}
 };
 
+using Parameter = std::variant<std::string, double, int>;
+
+template <typename T>
+T get(const std::map<std::string, Parameter>& params, std::string key, const T& default_value) {
+  if (params.contains(key)) {
+    return default_value;
+  } else {
+    return std::get<T>(params.at(key));
+  }
+}
+
+struct EvolveOpts {
+  EvolveOpts() : 
+    return_measurement_outcomes(false),
+    return_measurement_probabilities(false),
+    simplify_circuit(true),
+    dag_direction("random")
+  {}
+
+  EvolveOpts(const std::map<std::string, Parameter>& params) {
+    return_measurement_outcomes = get<int>(params, "return_measurement_outcomes", false);   
+    return_measurement_probabilities = get<int>(params, "return_measurement_probabilities", false);   
+    simplify_circuit = get<int>(params, "simplify_circuit", true);
+    dag_direction = get<std::string>(params, "dag_direction", "random");
+  }
+
+  bool return_measurement_outcomes;
+  bool return_measurement_probabilities;
+  bool simplify_circuit;
+  std::string dag_direction;
+};
+
+using MeasurementData = std::pair<bool, double>;
+using EvolveResult = std::optional<
+  std::variant<
+    std::vector<MeasurementData>,
+    std::vector<bool>,
+    std::vector<double>
+  >
+>;
+
 class QuantumState : public EntanglementEntropyState, public std::enable_shared_from_this<QuantumState> {
   protected:
     uint32_t num_qubits;
 
-    static bool get_dir() {
-      return randf() < 0.5;
-    }
+    static bool get_dir(const EvolveOpts& opts);
+    static EvolveResult process_measurement_results(const std::vector<MeasurementData>& measurements, const EvolveOpts& opts);
 
 	public:
 		uint32_t basis;
@@ -74,6 +114,17 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
     }
 
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits)=0;
+		virtual void evolve(const Eigen::MatrixXcd& gate);
+		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t q);
+
+		virtual void evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits);
+		virtual void evolve_diagonal(const Eigen::VectorXcd& gate);
+
+		virtual std::optional<MeasurementData> evolve(const Instruction& inst);
+
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts());
+    virtual EvolveResult evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts=EvolveOpts());
+
 
     void _evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits);
 
@@ -121,28 +172,14 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
 
     virtual void random_clifford(const Qubits& qubits);
 
-		virtual void evolve(const Eigen::MatrixXcd& gate);
-
-		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t q);
-
-		virtual void evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits);
-
-		virtual void evolve_diagonal(const Eigen::VectorXcd& gate);
-
-		virtual void evolve(const Instruction& inst);
-
-		virtual void evolve(const QuantumCircuit& circuit);
-
-    virtual void evolve(const QuantumCircuit& qc, const Qubits& qubits);
-
     static bool check_forced_measure(bool& outcome, double prob_zero);
 
-    virtual bool measure(const Measurement& m)=0;
-    virtual bool weak_measure(const WeakMeasurement& m)=0;
+    virtual MeasurementData measure(const Measurement& m)=0;
+    virtual MeasurementData weak_measure(const WeakMeasurement& m)=0;
 
     // Helper functions
-    bool measure(const Qubits& qubits, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
-    bool weak_measure(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
+    MeasurementData measure(const Qubits& qubits, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
+    MeasurementData weak_measure(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
 
     virtual std::vector<BitAmplitudes> sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) const;
 
@@ -163,6 +200,10 @@ class MagicQuantumState : public QuantumState {
     MagicQuantumState()=default;
     ~MagicQuantumState()=default;
     MagicQuantumState(uint32_t num_qubits) : QuantumState(num_qubits), use_parent(false) {}
+
+    using QuantumState::evolve;  
+		virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override;
+    virtual EvolveResult evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override;
 
     virtual std::vector<PauliAmplitudes> sample_paulis_montecarlo(const std::vector<QubitSupport>& qubits, size_t num_samples, size_t equilibration_timesteps, ProbabilityFunc prob, std::optional<PauliMutationFunc> mutation_opt=std::nullopt);
     virtual std::vector<PauliAmplitudes> sample_paulis_exhaustive(const std::vector<QubitSupport>& qubits);
@@ -230,24 +271,25 @@ class DensityMatrix : public MagicQuantumState {
     virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const override;
 
 		virtual void evolve(const Eigen::MatrixXcd& gate) override;
-
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
-
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) override;
 
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits) override;
-
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate) override;
 
-		virtual void evolve(const QuantumCircuit& circuit) override;
-
-		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override;
+    // Convenience
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
+      return MagicQuantumState::evolve(circuit, opts);
+    }
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override {
+      return MagicQuantumState::evolve(circuit, qubits, opts);
+    }
 
 		double mzr_prob(uint32_t q, bool outcome) const;
-		bool mzr(uint32_t q);
-    bool forced_mzr(uint32_t q, bool outcome);
-    virtual bool measure(const Measurement& m) override;
-    virtual bool weak_measure(const WeakMeasurement& m) override;
+		MeasurementData mzr(uint32_t q);
+    MeasurementData forced_mzr(uint32_t q, bool outcome);
+    virtual MeasurementData measure(const Measurement& m) override;
+    virtual MeasurementData weak_measure(const WeakMeasurement& m) override;
 
 		Eigen::VectorXd diagonal() const;
 
@@ -298,24 +340,25 @@ class Statevector : public MagicQuantumState {
     virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const override;
 
 		virtual void evolve(const Eigen::MatrixXcd &gate, const Qubits& qubits) override;
-
 		virtual void evolve(const Eigen::MatrixXcd &gate) override;
-		
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) override;
 
 		virtual void evolve_diagonal(const Eigen::VectorXcd &gate, const Qubits& qubits) override;
-
 		virtual void evolve_diagonal(const Eigen::VectorXcd &gate) override;
 
-		virtual void evolve(const QuantumCircuit& circuit) override;
-
-		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override;
+    // Convenience
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
+      return MagicQuantumState::evolve(circuit, opts);
+    }
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override {
+      return MagicQuantumState::evolve(circuit, qubits, opts);
+    }
 
 		double mzr_prob(uint32_t q, bool outcome) const;
-		bool mzr(uint32_t q);
-    bool forced_mzr(uint32_t q, bool outcome);
-    virtual bool measure(const Measurement& m) override;
-    virtual bool weak_measure(const WeakMeasurement& m) override;
+		MeasurementData mzr(uint32_t q);
+    MeasurementData forced_mzr(uint32_t q, bool outcome);
+    virtual MeasurementData measure(const Measurement& m) override;
+    virtual MeasurementData weak_measure(const WeakMeasurement& m) override;
 
 		double norm() const;
 		void normalize();
@@ -394,15 +437,21 @@ class MatrixProductState : public MagicQuantumState {
 
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) override;
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
-		virtual void evolve(const QuantumCircuit& circuit) override;
-		virtual void evolve(const QuantumCircuit& circuit, const Qubits& qubits) override;
+
+    // Convenience
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
+      return MagicQuantumState::evolve(circuit, opts);
+    }
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override {
+      return MagicQuantumState::evolve(circuit, qubits, opts);
+    }
 
 		virtual std::vector<double> probabilities() const override;
 
     virtual double purity() const override;
 
-    virtual bool measure(const Measurement& m) override;
-    virtual bool weak_measure(const WeakMeasurement& m) override;
+    virtual MeasurementData measure(const Measurement& m) override;
+    virtual MeasurementData weak_measure(const WeakMeasurement& m) override;
 
     std::vector<double> get_logged_truncerr();
 

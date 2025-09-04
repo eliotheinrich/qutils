@@ -399,12 +399,12 @@ bool test_clifford_states() {
 
     // Make sure measurement outcomes are the same
     Measurement m1(qubits, p);
-    bool b1 = psi.measure(m1);
+    auto [b1, p1] = psi.measure(m1);
 
     Measurement m2(qubits, p, b1);
-    bool b2 = chp.measure(m2);
+    auto [b2, p2] = chp.measure(m2);
 
-    ASSERT(b1 == b2, fmt::format("Different measurement outcomes."));
+    ASSERT((b1 == b2) && is_close(p1, p2), "Different measurement outcomes observed.");
 
     Statevector psi_chp = chp.to_statevector();
 
@@ -418,33 +418,6 @@ bool test_clifford_states() {
       ASSERT(is_close(c1, c2), fmt::format("Expectation of {} = {:.5f}, {:.5f} is not equal.", P_exp, c1, c2));
     }
   }
-
-  return true;
-}
-
-bool test_simple() {
-  constexpr size_t nqb = 6;
-
-  QuantumCHPState chp(nqb);
-  Statevector psi(nqb);
-
-  QuantumCircuit qc(nqb);
-  qc.h(0);
-  qc.h(1);
-  qc.cx(0, 1);
-
-  Measurement m({0,1}, PauliString("ZZ"));
-
-  psi.evolve(qc);
-  chp.evolve(qc);
-
-  bool b1 = psi.measure(m);
-  bool b2 = chp.measure(m);
-
-  Statevector psi_chp = chp.to_statevector();
-  std::cout << fmt::format("outcomes = {}, {}\n", b1, b2);
-  std::cout << psi.to_string() << "\n";
-  std::cout << psi_chp.to_string() << "\n";
 
   return true;
 }
@@ -559,12 +532,12 @@ bool test_mps_measure() {
 
       int s = randi();
       Random::seed_rng(s);
-      bool b1 = mps.measure(Measurement(qubits, P));
+      auto [b1, p1] = mps.measure(Measurement(qubits, P));
       Random::seed_rng(s);
-      bool b2 = psi.measure(Measurement(qubits, P));
+      auto [b2, p2] = psi.measure(Measurement(qubits, P));
 
       ASSERT(mps.state_valid(), fmt::format("MPS failed debug tests for P = {} on {}.", P, qubits));
-      ASSERT(b1 == b2, fmt::format("Different measurement outcomes observed for {}.", P));
+      ASSERT((b1 == b2) && is_close(p1, p2), fmt::format("Different measurement outcomes observed for P = {}", P));
       ASSERT(states_close(psi, mps), fmt::format("States don't match after measurement of {} on {}.\n{}\n{}", P, qubits, psi.to_string(), mps.to_string()));
     }
   }
@@ -601,14 +574,41 @@ bool test_mps_weak_measure() {
       constexpr double beta = 1.0;
       uint32_t s = randi();
       Random::seed_rng(s);
-      bool b1 = mps.weak_measure(WeakMeasurement(qubits, beta, P));
+      auto [b1, p1] = mps.weak_measure(WeakMeasurement(qubits, beta, P));
       Random::seed_rng(s);
-      bool b2 = psi.weak_measure(WeakMeasurement(qubits, beta, P));
+      auto [b2, p2] = psi.weak_measure(WeakMeasurement(qubits, beta, P));
 
       double d = std::abs(psi.inner(Statevector(mps)));
 
-      ASSERT(b1 == b2, "Different measurement outcomes observed.");
+      ASSERT((b1 == b2) && is_close_eps(1e-4, p1, p2), "Different measurement outcomes observed.");
       ASSERT(states_close(psi, mps), fmt::format("States don't match after weak measurement of {} on {}. d = {} \n{}\n{}", P, qubits, d, psi.to_string(), mps.to_string()));
+    }
+  }
+
+  return true;
+}
+
+bool test_measurement_record() {
+  constexpr size_t nqb = 2;
+
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc(nqb);
+    double theta = randf(0, 2*M_PI);
+    qc.ry(0, theta);
+    qc.mzr(0);
+
+    Statevector psi(nqb);
+    EvolveOpts opts;
+    opts.simplify_circuit = false;
+    opts.return_measurement_outcomes = true;
+    opts.return_measurement_probabilities = true;
+    auto result = psi.evolve(qc, opts);
+
+    std::vector<MeasurementData> measurements = std::get<0>(result.value());
+
+    for (const auto& [outcome, prob] : measurements) {
+      double p = outcome ? prob : (1.0 - prob);
+      ASSERT(is_close(p, std::pow(std::sin(theta/2), 2.0)));
     }
   }
 
@@ -1717,7 +1717,7 @@ bool test_free_fermion_state() {
       majorana_state.evolve_hamiltonian(H);
     } else {
       uint32_t q = randi(0, nqb);
-      bool outcome = psi.mzr(q);
+      auto [outcome, p] = psi.mzr(q);
       fermion_state.forced_projective_measurement(q, outcome);
       majorana_state.forced_projective_measurement(q, outcome);
     }
@@ -1785,7 +1785,7 @@ bool test_extended_majorana_state() {
       majorana_state.evolve_hamiltonian(H);
     } else if (gate_type == 3) {
       uint32_t q = randi(0, nqb);
-      bool outcome = psi.mzr(q);
+      auto [outcome, p] = psi.mzr(q);
       majorana_state.forced_projective_measurement(q, outcome);
     } else {
       uint32_t q = randi(0, nqb - 1);
@@ -1876,7 +1876,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_bitstring_expectation);
   ADD_TEST(test_sv_entanglement);
   ADD_TEST(test_free_fermion_state);
-  ADD_TEST(test_simple);
+  ADD_TEST(test_measurement_record);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

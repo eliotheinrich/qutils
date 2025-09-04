@@ -14,7 +14,7 @@ Statevector::Statevector(uint32_t num_qubits, uint32_t qregister) : MagicQuantum
 Statevector::Statevector(uint32_t num_qubits) : Statevector(num_qubits, 0) {}
 
 Statevector::Statevector(const QuantumCircuit &circuit) : Statevector(circuit.get_num_qubits()) {
-  evolve(circuit);
+  MagicQuantumState::evolve(circuit);
 }
 
 Statevector::Statevector(const Statevector& other) : Statevector(other.data) {}
@@ -180,7 +180,7 @@ double Statevector::mzr_prob(uint32_t q, bool outcome) const {
   }
 }
 
-bool Statevector::forced_mzr(uint32_t q, bool outcome) {
+MeasurementData Statevector::forced_mzr(uint32_t q, bool outcome) {
   double prob_zero = mzr_prob(q, 0);
   check_forced_measure(outcome, prob_zero);
 
@@ -192,23 +192,25 @@ bool Statevector::forced_mzr(uint32_t q, bool outcome) {
   }
 
   normalize();
-  return outcome;
+  double prob_outcome = outcome ? (1.0 - prob_zero) : prob_zero;
+  return {outcome, prob_outcome};
 }
 
-bool Statevector::mzr(uint32_t q) {
+MeasurementData Statevector::mzr(uint32_t q) {
   double prob_zero = mzr_prob(q, 0);
   uint32_t outcome = !(randf() < prob_zero);
 
   return forced_mzr(q, outcome);
 }
 
-bool Statevector::measure(const Measurement& m) {
+MeasurementData Statevector::measure(const Measurement& m) {
   Qubits qubits = m.qubits;
   if (m.is_basis()) {
     if (m.is_forced()) {
       return forced_mzr(qubits[0], m.get_outcome());
     } else {
-      return mzr(qubits[0]);
+      auto result = mzr(qubits[0]);
+      return result;
     }
   }
 
@@ -234,10 +236,11 @@ bool Statevector::measure(const Measurement& m) {
   evolve(proj, qubits);
   normalize();
 
-  return b;
+  double prob_outcome = b ? (1.0 - prob_zero) : prob_zero;
+  return {b, prob_outcome};
 }
 
-bool Statevector::weak_measure(const WeakMeasurement& m) {
+MeasurementData Statevector::weak_measure(const WeakMeasurement& m) {
   Qubits qubits = m.qubits;
   PauliString pauli = m.get_pauli();
 
@@ -262,7 +265,8 @@ bool Statevector::weak_measure(const WeakMeasurement& m) {
   evolve(proj, qubits);
   normalize();
 
-  return b;
+  double prob_outcome = b ? (1.0 - prob_zero) : prob_zero;
+  return {b, prob_outcome};
 }
 
 void Statevector::evolve(const Eigen::MatrixXcd &gate, const Qubits& qubits) {
@@ -327,27 +331,6 @@ void Statevector::evolve_diagonal(const Eigen::VectorXcd& gate) {
     data(a) *= gate(a);
   }
   normalize();
-}
-
-void Statevector::evolve(const QuantumCircuit& circuit) { 
-  bool dir = get_dir();
-  QuantumCircuit simple = circuit.simplify(dir);
-  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-  QuantumState::evolve(simple); 
-}
-
-void Statevector::evolve(const QuantumCircuit& circuit, const Qubits& qubits) {
-  bool dir = get_dir();
-  QuantumCircuit simple = circuit.simplify(dir);
-  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-  if (simple.is_unitary() && qubits.size() < 4) {
-    Eigen::MatrixXcd matrix = simple.to_matrix();
-    evolve(matrix, qubits);
-  } else {
-    QuantumState::evolve(simple, qubits);
-  }
 }
 
 double Statevector::norm() const {

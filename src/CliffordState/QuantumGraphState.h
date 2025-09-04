@@ -66,7 +66,7 @@ class QuantumGraphState : public CliffordState {
 
     virtual void cz(uint32_t a, uint b) override;
     virtual double mzr_expectation(uint32_t a) const override;
-    virtual bool mzr(uint32_t a, std::optional<bool> outcome=std::nullopt) override;
+    virtual MeasurementData mzr(uint32_t a, std::optional<bool> outcome=std::nullopt) override;
 
     void mzr_graph(uint32_t a, bool outcome);
 

@@ -176,6 +176,40 @@ class QuantumCircuit {
       add_gate("swap", {q1, q2});
     }
 
+    template <typename GateType, typename...Args>
+    void add_gate(const Qubits& qubits, std::optional<std::vector<double>> theta_opt = std::nullopt, const Args&... args) {
+      if (theta_opt) {
+        GateType gate(qubits, args...);
+        add_gate(std::make_shared<MatrixGate>(gate.define(theta_opt.value()), qubits, gate.label()));
+      } else {
+        add_gate(std::make_shared<GateType>(qubits, args...));
+      }
+    }
+
+    static inline std::optional<std::vector<double>> to_vector(std::optional<double> theta_opt) {
+      if (theta_opt) {
+        return std::vector<double>{theta_opt.value()};
+      } else {
+        return std::nullopt;
+      }
+    }
+
+    void rx(uint32_t q, std::optional<double> theta_opt=std::nullopt) {
+      add_gate<RxRotationGate>({q}, to_vector(theta_opt));
+    }
+
+    void ry(uint32_t q, std::optional<double> theta_opt=std::nullopt) {
+      add_gate<RyRotationGate>({q}, to_vector(theta_opt));
+    }
+
+    void rz(uint32_t q, std::optional<double> theta_opt=std::nullopt) {
+      add_gate<RzRotationGate>({q}, to_vector(theta_opt));
+    }
+
+    void rp(const Qubits& qubits, const PauliString& pauli, std::optional<double> theta_opt=std::nullopt) {
+      add_gate<PauliRotationGate>(qubits, to_vector(theta_opt), pauli);
+    }
+
     void random_clifford(const Qubits& qubits);
 
     void append(const QuantumCircuit& other);

@@ -223,6 +223,43 @@ std::shared_ptr<Gate> MatrixGate::clone() {
   return std::shared_ptr<Gate>(new MatrixGate(data, qubits)); 
 }
 
+uint32_t PauliRotationGate::num_params() const {
+  return 1;
+}
+
+std::string PauliRotationGate::label() const {
+  return fmt::format("R({}){}", pauli, adj ? "d" : "");
+}
+
+Eigen::MatrixXcd PauliRotationGate::define(const std::vector<double>& params) const {
+  if (params.size() != num_params()) {
+    std::string error_message = "Invalid number of params passed to define(). Expected " 
+      + std::to_string(this->num_params()) + ", received " + std::to_string(params.size()) + ".";
+    throw std::invalid_argument(error_message);
+  }
+
+  double t = params[0]/2;
+  Eigen::MatrixXcd gate = (std::complex<double>(0.0, -t) * pauli.to_matrix()).exp();
+
+  if (adj) {
+    gate = gate.adjoint();
+  }
+
+  return gate;
+}
+
+bool PauliRotationGate::is_clifford() const {
+  return false; 
+}
+
+std::shared_ptr<Gate> PauliRotationGate::adjoint() const {
+  return std::make_shared<PauliRotationGate>(qubits, pauli, !adj);
+}
+
+std::shared_ptr<Gate> PauliRotationGate::clone() {
+  return std::make_shared<PauliRotationGate>(qubits, pauli, adj);
+}
+
 uint32_t RxRotationGate::num_params() const {
   return 1;
 }
@@ -240,9 +277,9 @@ Eigen::MatrixXcd RxRotationGate::define(const std::vector<double>& params) const
 
   Eigen::MatrixXcd gate = Eigen::MatrixXcd::Zero(2, 2);
 
-  double t = params[0];
-  gate << std::complex<double>(std::cos(t/2), 0), std::complex<double>(0, -std::sin(t/2)), 
-       std::complex<double>(0, -std::sin(t/2)), std::complex<double>(std::cos(t/2), 0);
+  double t = params[0]/2;
+  gate << std::complex<double>(std::cos(t), 0),  std::complex<double>(0, -std::sin(t)), 
+          std::complex<double>(0, -std::sin(t)), std::complex<double>(std::cos(t), 0);
 
   if (adj) {
     gate = gate.adjoint();
@@ -280,9 +317,9 @@ Eigen::MatrixXcd RyRotationGate::define(const std::vector<double>& params) const
 
   Eigen::MatrixXcd gate = Eigen::MatrixXcd::Zero(2, 2);
 
-  double t = params[0];
-  gate << std::complex<double>(std::cos(t/2), 0), std::complex<double>(-std::sin(t/2), 0), 
-       std::complex<double>(std::sin(t/2), 0), std::complex<double>(std::cos(t/2), 0);
+  double t = params[0]/2;
+  gate << std::complex<double>(std::cos(t), 0), std::complex<double>(-std::sin(t), 0), 
+          std::complex<double>(std::sin(t), 0), std::complex<double>( std::cos(t), 0);
 
   if (adj) {
     gate = gate.adjoint();
@@ -320,9 +357,9 @@ Eigen::MatrixXcd RzRotationGate::define(const std::vector<double>& params) const
 
   Eigen::MatrixXcd gate = Eigen::MatrixXcd::Zero(2, 2);
 
-  double t = params[0];
-  gate << std::complex<double>(std::cos(t/2), -std::sin(t/2)), std::complex<double>(0.0, 0.0), 
-       std::complex<double>(0.0, 0.0), std::complex<double>(std::cos(t/2), std::sin(t/2));
+  double t = params[0]/2;
+  gate << std::complex<double>(std::cos(t), -std::sin(t)), std::complex<double>(0.0, 0.0), 
+          std::complex<double>(0.0, 0.0), std::complex<double>(std::cos(t), std::sin(t));
 
   if (adj) {
     gate = gate.adjoint();

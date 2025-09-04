@@ -56,9 +56,8 @@ class Tableau {
 
     void rowsum(uint32_t h, uint32_t i);
 
-    void evolve(const QuantumCircuit& qc);
-
-		void evolve(const Instruction& inst);
+    //void evolve(const QuantumCircuit& qc);
+		//void evolve(const Instruction& inst);
 
     void h(uint32_t a);
     void s(uint32_t a);
@@ -73,7 +72,7 @@ class Tableau {
     // and (2) the index on which the CHP algorithm performs rowsum if the mzr is random
     std::pair<bool, uint32_t> mzr_deterministic(uint32_t a) const;
 
-    bool mzr(uint32_t a, std::optional<bool> outcome=std::nullopt);
+    MeasurementData mzr(uint32_t a, std::optional<bool> outcome=std::nullopt);
 
     double sparsity() const;
 

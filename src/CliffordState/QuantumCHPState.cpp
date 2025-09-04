@@ -95,13 +95,14 @@ double QuantumCHPState::mzr_expectation(uint32_t a) const {
   auto [deterministic, _] = tableau.mzr_deterministic(a);
   Tableau tmp = tableau; // TODO do this without copying?
   if (deterministic) {
-    return 2*int(tmp.mzr(a)) - 1.0;
+    auto [outcome, p] = tmp.mzr(a);
+    return 2*int(outcome) - 1.0;
   } else {
     return 0.0;
   }
 }
 
-bool QuantumCHPState::mzr(uint32_t a, std::optional<bool> outcome) {
+MeasurementData QuantumCHPState::mzr(uint32_t a, std::optional<bool> outcome) {
   return tableau.mzr(a, outcome);
 }
 

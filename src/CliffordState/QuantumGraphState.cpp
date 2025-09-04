@@ -387,13 +387,13 @@ double QuantumGraphState::mzr_expectation(uint32_t a) const {
 }
 
 
-bool QuantumGraphState::mzr(uint32_t a, std::optional<bool> outcome) {
+MeasurementData QuantumGraphState::mzr(uint32_t a, std::optional<bool> outcome) {
   uint32_t basis = CONJUGATION_TABLE[graph.get_val(a)];
   bool positive = basis <= 3;
 
   if ((basis == 1) || (basis == 4)) {
     if (graph.degree(a) == 0) {
-      return !positive;
+      return {!positive, 1.0};
     }
   }
 
@@ -414,7 +414,9 @@ bool QuantumGraphState::mzr(uint32_t a, std::optional<bool> outcome) {
   }
 
   // TODO check for invalid forced measurements
-  return b;
+  double prob_zero = mzr_expectation(a);
+  double prob_outcome = b ? prob_zero : (1.0 - prob_zero);
+  return {b, prob_outcome};
 }
 
 void QuantumGraphState::toggle_edge_gate(uint32_t a, uint32_t b) {

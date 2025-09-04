@@ -189,6 +189,35 @@ class MatrixGate : public Gate {
     virtual std::shared_ptr<Gate> clone() override;
 };
 
+class PauliRotationGate : public Gate {
+  private:
+    bool adj;
+    PauliString pauli;
+
+  public:
+    PauliRotationGate(const Qubits& qubits, const PauliString& pauli, bool adj=false) : Gate(qubits), pauli(pauli), adj(adj) {
+      if (qubits.size() != pauli.num_qubits) {
+        throw std::runtime_error(fmt::format("{} gate can only have {} qubits. Passed {}", label(), pauli.num_qubits, qubits));
+      }
+
+      if (!pauli.hermitian()) {
+        throw std::runtime_error(fmt::format("Pauli {} provided to PauliRotationGate is not hermitian.", pauli));
+      }
+    }
+
+    virtual uint32_t num_params() const override;
+
+    virtual std::string label() const override;
+
+    virtual Eigen::MatrixXcd define(const std::vector<double>& params) const override;
+
+    virtual bool is_clifford() const override;
+
+    virtual std::shared_ptr<Gate> adjoint() const override;
+
+    virtual std::shared_ptr<Gate> clone() override;
+};
+
 class RxRotationGate : public Gate {
   private:
     bool adj;

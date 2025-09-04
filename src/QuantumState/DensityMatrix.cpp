@@ -13,7 +13,7 @@ DensityMatrix::DensityMatrix(const Statevector& state) : MagicQuantumState(state
 }
 
 DensityMatrix::DensityMatrix(const QuantumCircuit& circuit) : DensityMatrix(circuit.get_num_qubits()) {
-	evolve(circuit);
+  MagicQuantumState::evolve(circuit);
 }
 
 DensityMatrix::DensityMatrix(const DensityMatrix& rho) : MagicQuantumState(rho.num_qubits) {
@@ -250,28 +250,7 @@ void DensityMatrix::evolve_diagonal(const Eigen::VectorXcd& gate) {
 	}
 }
 
-void DensityMatrix::evolve(const QuantumCircuit& circuit) { 
-  bool dir = get_dir();
-  QuantumCircuit simple = circuit.simplify(dir);
-  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-  QuantumState::evolve(simple); 
-}
-
-void DensityMatrix::evolve(const QuantumCircuit& circuit, const Qubits& qubits) {
-  bool dir = get_dir();
-  QuantumCircuit simple = circuit.simplify(dir);
-  Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-  if (simple.is_unitary() && qubits.size() < 4) {
-    Eigen::MatrixXcd matrix = simple.to_matrix();
-    evolve(matrix, qubits);
-  } else {
-    QuantumState::evolve(simple, qubits);
-  }
-}
-
-bool DensityMatrix::mzr(uint32_t q) {
+MeasurementData DensityMatrix::mzr(uint32_t q) {
 	for (uint32_t i = 0; i < basis; i++) {
 		for (uint32_t j = 0; j < basis; j++) {
 			uint32_t q1 = (i >> q) & 1u;
@@ -283,7 +262,7 @@ bool DensityMatrix::mzr(uint32_t q) {
 		}
 	}
 
-	return 0;
+  
 }
 
 double DensityMatrix::mzr_prob(uint32_t q, bool outcome) const {
@@ -301,7 +280,7 @@ double DensityMatrix::mzr_prob(uint32_t q, bool outcome) const {
   }
 }
 
-bool DensityMatrix::forced_mzr(uint32_t q, bool outcome) {
+MeasurementData DensityMatrix::forced_mzr(uint32_t q, bool outcome) {
   double prob_zero = mzr_prob(q, 0);
   check_forced_measure(outcome, prob_zero);
 
@@ -318,11 +297,12 @@ bool DensityMatrix::forced_mzr(uint32_t q, bool outcome) {
 
   data /= trace();
 
-  return outcome;
+  double prob_outcome = outcome ? (1.0 - prob_zero) : prob_zero;
+  return {outcome, prob_outcome};
 }
 
 
-bool DensityMatrix::measure(const Measurement& m) {
+MeasurementData DensityMatrix::measure(const Measurement& m) {
   Qubits qubits = m.qubits;
   if (m.is_basis()) { // Special, more efficient behavior for computational basis measurements
     if (m.is_forced()) {
@@ -358,22 +338,25 @@ bool DensityMatrix::measure(const Measurement& m) {
 
     data = P*data*P.adjoint();
     data /= trace();
-    return outcome;
+    double prob_outcome = outcome ? (1.0 - prob_zero) : prob_zero;
+    return {outcome, prob_outcome};
   } else { // Unforced; result is mixed state
+    double prob_zero = 1.0 - std::abs(expectation(id - matrix));
     Eigen::MatrixXcd P0 = (id - matrix)/2.0;
     Eigen::MatrixXcd P1 = (id + matrix)/2.0;
 
     data = P0*data*P0.adjoint() + P1*data*P1.adjoint();
-    return 0; // No definite outcome; default to 0
+    return {0, prob_zero}; // No definite outcome; default to 0
   }
 }
 
-bool DensityMatrix::weak_measure(const WeakMeasurement& m) {
+MeasurementData DensityMatrix::weak_measure(const WeakMeasurement& m) {
   Qubits qubits = m.qubits;
   PauliString pauli = m.get_pauli();
 
   PauliString pauli_ = pauli.superstring(qubits, num_qubits);
   Eigen::MatrixXcd matrix = m.beta * pauli_.to_matrix();
+  double prob_zero = (1 + std::tanh(2*m.beta) * expectation(pauli_).real())/2.0;
 
   if (m.is_forced()) {
     bool outcome = m.get_outcome();
@@ -386,13 +369,14 @@ bool DensityMatrix::weak_measure(const WeakMeasurement& m) {
 
     data = P*data*P.adjoint();
     data /= trace();
-    return outcome;
+    double prob_outcome = outcome ? prob_zero : (1.0 - prob_zero);
+    return {outcome, prob_outcome};
   } else {
     Eigen::MatrixXcd P0 = (-matrix).exp()/std::sqrt(2 * std::cosh(2*m.beta));
     Eigen::MatrixXcd P1 = ( matrix).exp()/std::sqrt(2 * std::cosh(2*m.beta));
 
     data = P0*data*P0.adjoint() + P1*data*P1.adjoint();
-    return 0;
+    return {0, prob_zero}; // No definite outcome; default to 0
   }
 }
 
