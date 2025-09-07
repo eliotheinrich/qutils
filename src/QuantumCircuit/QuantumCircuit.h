@@ -80,7 +80,6 @@ class QuantumCircuit {
     void apply_qubit_map(const Qubits& qubits);
 
     Qubits get_support() const;
-    std::pair<QuantumCircuit, Qubits> reduce() const;
 
     void validate_instruction(const Instruction& inst) const;
 
@@ -91,14 +90,19 @@ class QuantumCircuit {
       add_measurement(m);
     }
 
-    void mzr(uint32_t q) { add_measurement({q}); }
+    void mzr(uint32_t q) { 
+      add_measurement({q}); 
+    }
     void add_weak_measurement(const WeakMeasurement& m);
     void add_weak_measurement(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt) {
       WeakMeasurement m(qubits, beta, pauli, outcome);
       add_weak_measurement(m);
     }
-    void wmzr(uint32_t q, double beta) { add_weak_measurement({q}, beta); }
+    void wmzr(uint32_t q, double beta) { 
+      add_weak_measurement({q}, beta); 
+    }
 
+    void add_gate(const FreeFermionGate& gate);
     void add_gate(const std::string& name, const Qubits& qubits);
     void add_gate(const std::shared_ptr<Gate> &gate);
     void add_gate(const Eigen::MatrixXcd& gate, const Qubits& qubits);

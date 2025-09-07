@@ -1734,12 +1734,18 @@ class MatrixProductStateImpl {
     }
 
     MeasurementResult weak_measurement_result(const WeakMeasurement& m) {
+      if (m.num_params() > 0) {
+        throw std::runtime_error("Cannot apply weak measurement with unbound strength.");
+      }
+
+      double beta = m.beta.value();
+
       PauliString pauli = m.get_pauli();
       Qubits qubits = m.qubits;
 
       auto pm = pauli.to_matrix();
 
-      double prob_zero = (1 + std::tanh(2*m.beta) * expectation(pauli.superstring(qubits, num_qubits)).real())/2.0;
+      double prob_zero = (1 + std::tanh(2*beta) * expectation(pauli.superstring(qubits, num_qubits)).real())/2.0;
 
       bool b;
       if (m.is_forced()) {
@@ -1753,13 +1759,13 @@ class MatrixProductStateImpl {
         t = -t;
       }
 
-      Eigen::MatrixXcd proj = (t*m.beta).exp();
+      Eigen::MatrixXcd proj = (t*beta).exp();
       Eigen::MatrixXcd P = proj.pow(2);
       double norm = std::sqrt(std::abs(expectation(P, qubits)));
 
       proj = proj / norm;
 
-      Logger::log_info(fmt::format("Weak measuring {} on {} with beta = {}. Obtained prob_zero = {}, norm = {}, outcome = {}\n", pauli, qubits, m.beta, prob_zero, norm, b));
+      Logger::log_info(fmt::format("Weak measuring {} on {} with beta = {}. Obtained prob_zero = {}, norm = {}, outcome = {}\n", pauli, qubits, beta, prob_zero, norm, b));
 
       return MeasurementResult(proj, prob_zero, b);
     }
@@ -2224,21 +2230,7 @@ struct MatrixProductState::glaze {
   );
 };
 
-std::vector<char> MatrixProductState::serialize() const {
-  std::vector<char> bytes;
-  auto write_error = glz::write_beve(*this, bytes);
-  if (write_error) {
-    throw std::runtime_error(fmt::format("Error writing MatrixProductState to binary: \n{}", glz::format_error(write_error, bytes)));
-  }
-  return bytes;
-}
-
-void MatrixProductState::deserialize(const std::vector<char>& bytes) {
-  auto parse_error = glz::read_beve(*this, bytes);
-  if (parse_error) {
-    throw std::runtime_error(fmt::format("Error reading MatrixProductState from binary: \n{}", glz::format_error(parse_error, bytes)));
-  }
-}
+DEFINE_SERIALIZATION(MatrixProductState);
 
 void MatrixProductState::set_left_ortho_lim(uint32_t q) { impl->left_ortho_lim = q; }
 void MatrixProductState::set_right_ortho_lim(uint32_t q) { impl->right_ortho_lim = q; }

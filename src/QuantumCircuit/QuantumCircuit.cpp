@@ -1,5 +1,6 @@
 #include "QuantumCircuit.h"
 #include "Clifford.hpp"
+#include "Instructions.hpp"
 
 #include <fmt/format.h>
 #include <fmt/ranges.h>
@@ -20,9 +21,18 @@ uint32_t QuantumCircuit::num_params() const {
 	uint32_t n = 0;
 	for (auto const &inst : instructions) {
 		n += std::visit(quantumcircuit_utils::overloaded {
-			[](std::shared_ptr<Gate> gate) -> uint32_t { return gate->num_params(); },
-			[](const Measurement& m) -> uint32_t { return 0u; },
-			[](const WeakMeasurement& m) -> uint32_t { return 0u; }
+			[](std::shared_ptr<Gate> gate) -> uint32_t { 
+        return gate->num_params(); 
+      },
+      [](const FreeFermionGate& gate) -> uint32_t { 
+        return gate.num_params(); 
+      },
+			[](const Measurement& m) -> uint32_t { 
+        return 0u; 
+      },
+			[](const WeakMeasurement& m) -> uint32_t { 
+        return m.num_params(); 
+      }
 		}, inst);
 	}
 	
@@ -32,9 +42,18 @@ uint32_t QuantumCircuit::num_params() const {
 bool QuantumCircuit::is_clifford() const {
   for (auto const& inst : instructions) {
     bool valid = std::visit(quantumcircuit_utils::overloaded {
-			[](std::shared_ptr<Gate> gate) -> uint32_t { return gate->is_clifford(); },
-			[](const Measurement &m) -> uint32_t { return true; },
-			[](const WeakMeasurement& m) -> uint32_t { return false; }
+			[](std::shared_ptr<Gate> gate) -> bool { 
+        return gate->is_clifford(); 
+      },
+      [](const FreeFermionGate& gate) -> bool { 
+        return gate.is_clifford(); 
+      },
+			[](const Measurement &m) -> bool { 
+        return true; 
+      },
+			[](const WeakMeasurement& m) -> bool { 
+        return false; 
+      }
 		}, inst);
     
     if (!valid) {
@@ -51,13 +70,7 @@ uint32_t QuantumCircuit::length() const {
 
 bool QuantumCircuit::is_unitary() const {
   for (auto const &inst : instructions) {
-    bool valid = std::visit(quantumcircuit_utils::overloaded {
-			[](std::shared_ptr<Gate> gate) -> uint32_t { return true; },
-			[](const Measurement &m) -> uint32_t { return false; },
-			[](const WeakMeasurement& m) -> uint32_t { return false; }
-		}, inst);
-
-    if (!valid) {
+    if (!instruction_is_unitary(inst)) {
       return false;
     }
   }
@@ -324,12 +337,17 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
     auto [i, j] = merged_pair.value();
     const Instruction& inst1 = dag.get_val(i);
     const Instruction& inst2 = dag.get_val(j);
+
     QuantumCircuit qc(num_qubits);
     qc.add_instruction(inst1);
     qc.add_instruction(inst2);
 
-    auto [qc_, support_] = qc.reduce();
-    Instruction combined = std::make_shared<MatrixGate>(qc_.to_matrix(), support_);
+    Qubits support = qc.get_support();
+    Qubits map = reduced_support(support, num_qubits);
+    qc.apply_qubit_map(map);
+    qc.resize(support.size());
+
+    Instruction combined = std::make_shared<MatrixGate>(qc.to_matrix(), support);
 
     dag.set_val(i, combined);
 
@@ -367,6 +385,9 @@ void QuantumCircuit::apply_qubit_map(const Qubits& qubits) {
 
         gate->qubits = _qubits;
 			},
+      [&qubits](FreeFermionGate& gate) {
+        gate.apply_qubit_map(qubits);
+      },
 			[&qubits](Measurement& m) { 
         Qubits _qubits(m.qubits.size());
         for (size_t q = 0; q < m.qubits.size(); q++) {
@@ -402,21 +423,6 @@ Qubits QuantumCircuit::get_support() const {
   return support_;
 }
 
-std::pair<QuantumCircuit, Qubits> QuantumCircuit::reduce() const {
-  Qubits support = get_support();
-  Qubits reduced_support = argsort(support);
-  Qubits map(num_qubits);
-  for (size_t i = 0; i < support.size(); i++) {
-    map[support[i]] = reduced_support[i];
-  }
-
-  QuantumCircuit qc(*this);
-  qc.apply_qubit_map(map);
-  qc.resize(support.size());
-  return {qc, support};
-}
-
-
 void QuantumCircuit::validate_instruction(const Instruction& inst) const {
   size_t num_qubits = this->num_qubits;
   auto validate_qubits = [num_qubits](const Qubits& qubits) {
@@ -431,6 +437,7 @@ void QuantumCircuit::validate_instruction(const Instruction& inst) const {
     [&](std::shared_ptr<Gate> gate) {
       validate_qubits(gate->qubits);
     },
+    [&](const FreeFermionGate& gate) { },
     [&](const Measurement& m) { 
       validate_qubits(m.qubits);
     },
@@ -451,6 +458,10 @@ void QuantumCircuit::add_measurement(const Measurement& m) {
 
 void QuantumCircuit::add_weak_measurement(const WeakMeasurement& m) {
   add_instruction(m);
+}
+
+void QuantumCircuit::add_gate(const FreeFermionGate& gate) {
+  add_instruction(gate);
 }
 
 void QuantumCircuit::add_gate(const std::shared_ptr<Gate> &gate) {
@@ -510,17 +521,40 @@ QuantumCircuit QuantumCircuit::bind_params(const std::vector<double>& params) co
   for (auto const &inst : instructions) {
 		std::visit(quantumcircuit_utils::overloaded {
       [&qc, &n, &params](std::shared_ptr<Gate> gate) {
-        std::vector<double> gate_params(gate->num_params());
+        size_t N = gate->num_params();
+        std::vector<double> gate_params(N);
 
-        for (uint32_t i = 0; i < gate->num_params(); i++) {
+        for (uint32_t i = 0; i < N; i++) {
           gate_params[i] = params[i + n];
         }
 			
-        n += gate->num_params();
+        n += N;
         qc.add_gate(gate->define(gate_params), gate->qubits);
       },
-      [&qc](const Measurement& m) { qc.add_measurement(m); },
-      [&qc](const WeakMeasurement& m) { qc.add_weak_measurement(m); }
+      [&qc, &n, &params](const FreeFermionGate& gate) {
+        size_t N = gate.num_params();
+        std::vector<double> gate_params(N);
+
+        for (uint32_t i = 0; i < N; i++) {
+          gate_params[i] = params[i + n];
+        }
+
+        n += N;
+        qc.add_gate(gate.bind_params(gate_params));
+      },
+      [&qc](const Measurement& m) { 
+        qc.add_measurement(m); 
+      },
+      [&qc, &n, &params](const WeakMeasurement& m) { 
+        size_t N = m.num_params();
+        std::vector<double> gate_params(N);
+        for (uint32_t i = 0; i < N; i++) {
+          gate_params[i] = params[i + n];
+        }
+
+        n += N;
+        qc.add_weak_measurement(m.bind_params(gate_params)); 
+      }
     }, inst);
   }
 
@@ -532,6 +566,7 @@ size_t QuantumCircuit::get_num_measurements() const {
   for (auto const& inst : instructions) {
 		std::visit(quantumcircuit_utils::overloaded {
       [](std::shared_ptr<Gate> gate) { },
+      [](const FreeFermionGate& gate) { },
       [&](const Measurement& m) { n++; },
       [&](const WeakMeasurement& m) { n++; }
     }, inst);
@@ -550,6 +585,7 @@ void QuantumCircuit::set_measurement_outcomes(const std::vector<bool>& outcomes)
   for (auto& inst : instructions) {
 		std::visit(quantumcircuit_utils::overloaded {
       [](std::shared_ptr<Gate> gate) { },
+      [](const FreeFermionGate& gate) { },
       [&](Measurement& m) { m.outcome = outcomes[n++]; },
       [&](WeakMeasurement& m) { m.outcome = outcomes[n++]; }
     }, inst);
@@ -577,6 +613,7 @@ QuantumCircuit QuantumCircuit::adjoint(const std::optional<std::vector<double>>&
     for (uint32_t i = 0; i < instructions.size(); i++) {
       std::visit(quantumcircuit_utils::overloaded {
         [&qc](std::shared_ptr<Gate> gate) { qc.add_gate(gate->adjoint()); },
+        [&qc](const FreeFermionGate& gate) { qc.add_gate(gate.adjoint()); },
         [&qc](const Measurement& m) { qc.add_measurement(m); },
         [&qc](const WeakMeasurement& m) { qc.add_weak_measurement(m); }
       }, instructions[instructions.size() - i - 1]);
@@ -593,6 +630,7 @@ QuantumCircuit QuantumCircuit::reverse() const {
   for (uint32_t i = 0; i < instructions.size(); i++) {
     std::visit(quantumcircuit_utils::overloaded {
       [&qc](std::shared_ptr<Gate> gate) { qc.add_gate(gate); },
+      [&qc](const FreeFermionGate& gate) { qc.add_gate(gate); },
       [&qc](const Measurement& m) { qc.add_measurement(m); },
       [&qc](const WeakMeasurement& m) { qc.add_weak_measurement(m); }
     }, instructions[instructions.size() - i - 1]);
@@ -673,16 +711,25 @@ Eigen::MatrixXcd QuantumCircuit::to_matrix(const std::optional<std::vector<doubl
       throw std::runtime_error("Cannot convert QuantumCircuit with n > 15 qubits to matrix.");
     }
 
-    Eigen::MatrixXcd Q = Eigen::MatrixXcd::Zero(1u << num_qubits, 1u << num_qubits);
-    Q.setIdentity();
+    Eigen::MatrixXcd Q = Eigen::MatrixXcd::Identity(1u << num_qubits, 1u << num_qubits);
 
     uint32_t p = num_qubits;
 
     for (uint32_t i = 0; i < instructions.size(); i++) {
 			std::visit(quantumcircuit_utils::overloaded {
-        [&Q, p](std::shared_ptr<Gate> gate) { Q = full_circuit_unitary(gate->define(), gate->qubits, p) * Q; },
-        [](const Measurement& m) { throw std::invalid_argument("Cannot convert measurement to matrix."); },
-        [](const WeakMeasurement& m) { throw std::invalid_argument("Cannot convert weak measurement to matrix."); }
+        [&Q, p](std::shared_ptr<Gate> gate) { 
+          Q = embed_unitary(gate->define(), gate->qubits, p) * Q; 
+        },
+        [&Q, p](const FreeFermionGate& gate) { 
+          auto g = gate.to_gate();
+          Q = embed_unitary(g->define(), g->qubits, p) * Q;
+        },
+        [](const Measurement& m) { 
+          throw std::invalid_argument("Cannot convert measurement to matrix."); 
+        },
+        [](const WeakMeasurement& m) { 
+          throw std::invalid_argument("Cannot convert weak measurement to matrix."); 
+        }
       }, instructions[i]);
     }
 

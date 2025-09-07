@@ -159,6 +159,7 @@ NB_MODULE(qutils_bindings, m) {
 
       new (adam) ADAMOptimizer(learning_rate, beta1, beta2, epsilon, noisy_gradients, gradient_noise);
     }, "learning_rate"_a=0.001, "beta1"_a=0.9, "beta2"_a=0.999, "epsilon"_a=1e-8, "noisy_gradients"_a=false, "gradient_noise"_a=0.01)
+  .def("reset", &ADAMOptimizer::reset)
   .def("step", &ADAMOptimizer::step);
 
   nanobind::class_<QuantumCircuit>(m, "QuantumCircuit")
@@ -436,12 +437,6 @@ NB_MODULE(qutils_bindings, m) {
     .def("__setstate__", [](QuantumCHPState& self, const nanobind::bytes& bytes) { 
       new (&self) QuantumCHPState();
       self.deserialize(convert_bytes(bytes)); })
-    .def("set_x", &QuantumCHPState::set_x)
-    .def("set_x", [](QuantumCHPState& self, size_t i, size_t j, size_t v) { self.set_x(i, j, static_cast<bool>(v)); })
-    .def("set_z", &QuantumCHPState::set_z)
-    .def("set_z", [](QuantumCHPState& self, size_t i, size_t j, size_t v) { self.set_z(i, j, static_cast<bool>(v)); })
-    .def("get_x", [](QuantumCHPState& self, size_t i, size_t j) { return self.tableau.get_x(i, j); })
-    .def("get_z", [](QuantumCHPState& self, size_t i, size_t j) { return self.tableau.get_z(i, j); })
     .def("tableau", [](QuantumCHPState& self) { return self.tableau.to_matrix(); })
     .def("evolve", [](QuantumCHPState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) { 
       if (params) {
@@ -458,9 +453,16 @@ NB_MODULE(qutils_bindings, m) {
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("stabilizers", [](const QuantumCHPState& self) { return self.stabilizers(); })
-    .def("__getitem__", [](const QuantumCHPState& self, size_t i) { 
-        if (i < self.size()) {
-          return self.get_row(i); 
+    .def("get_stabilizer", [](const QuantumCHPState& self, size_t i) { 
+        if (i < self.num_qubits) {
+          return self.get_stabilizer(i); 
+        } else {
+          throw nanobind::index_error("Index out of bounds.");
+        }
+    })
+    .def("get_destabilizer", [](const QuantumCHPState& self, size_t i) { 
+        if (i < self.num_qubits) {
+          return self.get_destabilizer(i); 
         } else {
           throw nanobind::index_error("Index out of bounds.");
         }
@@ -469,7 +471,6 @@ NB_MODULE(qutils_bindings, m) {
       auto [det, _] = self.tableau.mzr_deterministic(i);
       return det;
     })
-    .def("rowsum", [](QuantumCHPState& self, uint32_t q1, uint32_t q2) { self.tableau.rowsum(q1 + self.num_qubits, q2 + self.num_qubits); })
     .def("rref", &QuantumCHPState::rref)
     .def("xrref", &QuantumCHPState::xrref)
     .def("rank", [](QuantumCHPState& self, const Qubits& qubits) { return self.partial_rank(qubits); })
@@ -535,29 +536,42 @@ NB_MODULE(qutils_bindings, m) {
       return qc;
     });
 
-  nanobind::class_<FreeFermionHamiltonian>(m, "FreeFermionHamiltonian")
-    .def(nanobind::init<size_t>())
-    .def("add_term", &FreeFermionHamiltonian::add_term)
-    .def("add_nonconserving_term", &FreeFermionHamiltonian::add_nonconserving_term);
+  nanobind::class_<FreeFermionGate>(m, "FreeFermionGate")
+    .def("__init__", [](FreeFermionGate* gate, 
+      size_t num_qubits, std::optional<double> t
+    ) {
+      new (gate) FreeFermionGate(num_qubits, t);
+    }, "num_qubits"_a, "t"_a=nanobind::none())
+    .def(nanobind::init<const FreeFermionGate&>())
+    .def("add_term", &FreeFermionGate::add_term, "i"_a, "j"_a, "a"_a, "adj"_a=true);
 
-  nanobind::class_<GaussianState, EntanglementEntropyState>(m, "GaussianState")
-    .def(nanobind::init<size_t, Qubits&>())
-    .def("system_size", &GaussianState::system_size)
-    .def("__str__", &GaussianState::to_string)
-    .def("swap", &GaussianState::swap)
-    .def("entanglement", &GaussianState::entanglement)
-    .def("evolve_hamiltonian", &GaussianState::evolve_hamiltonian, "H"_a, "t"_a = 1.0)
-    .def("evolve", [](GaussianState& self, const Eigen::MatrixXcd& U) { self.evolve(U); }, "U"_a)
-    //.def("weak_measure_hamiltonian", [](GaussianState& self, const Eigen::MatrixXcd& H, double beta) { self.weak_measurement_hamiltonian(H, beta); }, "H"_a, "beta"_a = 1.0)
-    //.def("weak_measure_hamiltonian", [](GaussianState& self, const Eigen::MatrixXcd& A, const Eigen::MatrixXcd& B, double beta) { self.weak_measurement_hamiltonian(A, B, beta); }, "A"_a, "B"_a, "beta"_a = 1.0)
-    //.def("weak_measure", [](GaussianState& self, const Eigen::MatrixXcd& U) { self.weak_measurement(U); }, "H"_a)
-    .def("forced_projective_measurement", [](GaussianState& self, size_t i, bool outcome) {
-      self.forced_projective_measurement(i, outcome); 
+  nanobind::class_<GaussianState, MagicQuantumState>(m, "GaussianState")
+    .def(nanobind::init<uint32_t>())
+    .def("__init__", [](GaussianState* state, 
+      size_t num_qubits, std::optional<Qubits> sites
+    ) {
+      new (state) GaussianState(num_qubits, sites);
+    }, "num_qubits"_a, "sites"_a=nanobind::none())
+    .def("__setstate__", [](GaussianState& self, const nanobind::bytes& bytes) { 
+      new (&self) GaussianState();
+      self.deserialize(convert_bytes(bytes)); 
     })
-    .def("mzr", [](GaussianState& self, size_t i) { 
-        return self.projective_measurement(i); 
-    })
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) { 
+      if (params) {
+        self.evolve(qc, EvolveOpts(params.value())); 
+      } else {
+        self.evolve(qc);
+      }
+    }, "circuit"_a, "params"_a=nanobind::none())
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) { 
+      if (params) {
+        self.evolve(qc, qubits, EvolveOpts(params.value())); 
+      } else {
+        self.evolve(qc, qubits);
+      }
+    }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("num_particles", &GaussianState::num_particles)
-    //.def("correlation_matrix", &GaussianState::correlation_matrix)
+    .def("covariance_matrix", &GaussianState::covariance_matrix)
+    .def("majorana_covariance_matrix", &GaussianState::majorana_covariance_matrix)
     .def("occupation", [](GaussianState& self, size_t i) { return self.occupation(i); });
 }

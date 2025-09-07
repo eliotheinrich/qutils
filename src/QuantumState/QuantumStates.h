@@ -82,6 +82,28 @@ using EvolveResult = std::optional<
   >
 >;
 
+#define DEFINE_SERIALIZATION(CLASS_NAME)                                                \
+std::vector<char> CLASS_NAME::serialize() const {                                       \
+    std::vector<char> bytes;                                                            \
+    auto write_error = glz::write_beve(*this, bytes);                                   \
+    if (write_error) {                                                                  \
+        throw std::runtime_error(fmt::format(                                           \
+            "Error writing " #CLASS_NAME " to binary: \n{}",                            \
+            glz::format_error(write_error, bytes)));                                    \
+    }                                                                                   \
+    return bytes;                                                                       \
+}                                                                                       \
+                                                                                        \
+void CLASS_NAME::deserialize(const std::vector<char>& bytes) {                          \
+    auto parse_error = glz::read_beve(*this, bytes);                                    \
+    if (parse_error) {                                                                  \
+        throw std::runtime_error(fmt::format(                                           \
+            "Error reading " #CLASS_NAME " from binary: \n{}",                          \
+            glz::format_error(parse_error, bytes)));                                    \
+    }                                                                                   \
+}
+
+
 class QuantumState : public EntanglementEntropyState, public std::enable_shared_from_this<QuantumState> {
   protected:
     uint32_t num_qubits;
@@ -107,7 +129,7 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
 
     virtual std::complex<double> expectation(const PauliString& pauli) const=0;
 
-  // NOTE: the default implementation relies on computing the full probabilities(). Providing a more efficient implementation from child classes is important.
+    // NOTE: the default implementation relies on computing the full probabilities(). Providing a more efficient implementation from child classes is important.
     virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const;
 
     virtual std::shared_ptr<QuantumState> partial_trace(const Qubits& qubits) const=0;
@@ -121,6 +143,8 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
 
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits);
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate);
+
+    virtual void evolve(const FreeFermionGate& gate);
 
 		virtual std::optional<MeasurementData> evolve(const Instruction& inst);
 
@@ -183,6 +207,9 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
     MeasurementData measure(const Qubits& qubits, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
     MeasurementData weak_measure(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
 
+    virtual MeasurementData mzr(uint32_t q, std::optional<bool> outcome=std::nullopt) { return measure(Measurement({q}, std::nullopt, outcome)); }
+		virtual MeasurementData wmzr(uint32_t q, double beta, std::optional<bool> outcome=std::nullopt) { return weak_measure(WeakMeasurement({q}, beta, std::nullopt, outcome)); }
+
     virtual std::vector<BitAmplitudes> sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) const;
 
 		virtual std::vector<double> probabilities() const=0;
@@ -192,6 +219,11 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
 
     virtual std::vector<char> serialize() const=0;
     virtual void deserialize(const std::vector<char>& bytes)=0;
+};
+
+class not_implemented: public std::logic_error {
+  public:
+      not_implemented() : std::logic_error("Function not yet implemented.") { };
 };
 
 class MagicQuantumState : public QuantumState {
@@ -212,7 +244,7 @@ class MagicQuantumState : public QuantumState {
     virtual std::vector<PauliAmplitudes> sample_paulis_exact(const std::vector<QubitSupport>& qubits, size_t num_samples, ProbabilityFunc prob);
 
     virtual std::vector<PauliAmplitudes> sample_paulis(const std::vector<QubitSupport>& qubits, size_t num_samples) {
-      throw std::runtime_error("Attempted to call virtual sample_paulis on state which does not provide an implementation.");
+      throw not_implemented();
     }
 
     void set_use_parent_implementation(bool use_parent) {
@@ -272,6 +304,7 @@ class DensityMatrix : public MagicQuantumState {
     std::complex<double> expectation(const Eigen::MatrixXcd& m, const Qubits& qubits) const;
     virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const override;
 
+    using QuantumState::evolve;
 		virtual void evolve(const Eigen::MatrixXcd& gate) override;
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) override;
@@ -288,8 +321,7 @@ class DensityMatrix : public MagicQuantumState {
     }
 
 		double mzr_prob(uint32_t q, bool outcome) const;
-		MeasurementData mzr(uint32_t q);
-    MeasurementData forced_mzr(uint32_t q, bool outcome);
+		virtual MeasurementData mzr(uint32_t q, std::optional<bool> outcome=std::nullopt) override;
     virtual MeasurementData measure(const Measurement& m) override;
     virtual MeasurementData weak_measure(const WeakMeasurement& m) override;
 
@@ -341,14 +373,14 @@ class Statevector : public MagicQuantumState {
     std::complex<double> expectation(const Eigen::MatrixXcd& m, const Qubits& qubits) const;
     virtual double expectation(const BitString& bits, std::optional<QubitSupport> support=std::nullopt) const override;
 
-		virtual void evolve(const Eigen::MatrixXcd &gate, const Qubits& qubits) override;
-		virtual void evolve(const Eigen::MatrixXcd &gate) override;
+    using QuantumState::evolve;
+		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
+		virtual void evolve(const Eigen::MatrixXcd& gate) override;
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) override;
 
-		virtual void evolve_diagonal(const Eigen::VectorXcd &gate, const Qubits& qubits) override;
-		virtual void evolve_diagonal(const Eigen::VectorXcd &gate) override;
+		virtual void evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits) override;
+		virtual void evolve_diagonal(const Eigen::VectorXcd& gate) override;
 
-    // Convenience
     virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
       return MagicQuantumState::evolve(circuit, opts);
     }
@@ -357,8 +389,7 @@ class Statevector : public MagicQuantumState {
     }
 
 		double mzr_prob(uint32_t q, bool outcome) const;
-		MeasurementData mzr(uint32_t q);
-    MeasurementData forced_mzr(uint32_t q, bool outcome);
+		virtual MeasurementData mzr(uint32_t q, std::optional<bool> outcome=std::nullopt) override;
     virtual MeasurementData measure(const Measurement& m) override;
     virtual MeasurementData weak_measure(const WeakMeasurement& m) override;
 
@@ -440,7 +471,6 @@ class MatrixProductState : public MagicQuantumState {
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) override;
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
 
-    // Convenience
     virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
       return MagicQuantumState::evolve(circuit, opts);
     }

@@ -2,6 +2,8 @@
 
 #include <unsupported/Eigen/MatrixFunctions>
 
+#include <set>
+
 #include <fmt/format.h>
 #include <fmt/ranges.h>
 
@@ -414,16 +416,187 @@ std::shared_ptr<Gate> parse_gate(const std::string& s, const Qubits& qubits) {
   }
 }
 
+Eigen::MatrixXcd fermion_operator(size_t k, size_t num_qubits) {
+  size_t basis = 1u << num_qubits;
+  Eigen::MatrixXcd M = Eigen::MatrixXcd::Zero(basis, basis);
+
+  for (size_t z = 0; z < basis; z++) {
+    if (((z >> k) & 1) == 0) {
+      size_t target = z | (1u << k);
+
+      size_t parity = 0;
+      for (size_t j = 0; j < k; ++j) {
+        if ((z >> j) & 1) {
+          parity++;
+        }
+      }
+      std::complex<double> phase = (parity % 2 == 0) ? 1.0 : -1.0;
+
+      M(target, z) = phase;
+    }
+  }
+
+  return M;
+}
+
+PauliString majorana_operator(size_t k, size_t num_qubits) {
+  PauliString P(num_qubits);
+  size_t j = k/2;
+  for (size_t i = 0; i < j; i++) {
+    P.set_z(i, 1);
+  }
+
+  P.set_x(j, 1);
+  if (k % 2) {
+    P.set_z(j, 1);
+  }
+
+  return P;
+}
+
+std::string FreeFermionGate::label() const {
+  std::string suffix = t ? "" : fmt::format("({:.3f})\n", t.value());
+  return fmt::format("MG{}", suffix);
+}
+
+std::string FreeFermionGate::to_string() const {
+  std::string s = "terms:\n";
+  for (const auto& term : terms) {
+    s += fmt::format("({}, {}): {:.5f}\n", term.i, term.j, term.a);
+  }
+
+  return s;
+}
+
+FreeFermionGate FreeFermionGate::bind_params(const std::vector<double>& params) const {
+  if (params.size() != 1) {
+    throw std::runtime_error("Must provide exactly one parameter to FreeFermionGate.");
+  }
+
+  FreeFermionGate gate(*this);
+  gate.t = params[0];
+  return std::move(gate);
+}
+
+void FreeFermionGate::apply_qubit_map(const Qubits& qubits) {
+  for (auto& term : terms) {
+    term.i = qubits[term.i];
+    term.j = qubits[term.j];
+  }
+}
+
+Eigen::MatrixXcd FreeFermionGate::to_matrix() const {
+  auto gate = to_gate();
+  auto m = gate->define();
+  return embed_unitary(gate->define(), gate->qubits, num_qubits);
+}
+
+Eigen::MatrixXcd term_to_matrix(const QuadraticTerm& term) {
+  Eigen::Matrix2cd sp = (gates::X::value - gates::i*gates::Y::value)/2.0;
+  
+  size_t N = std::abs(static_cast<int>(term.j) - static_cast<int>(term.i));
+  std::vector<Eigen::Matrix2cd> p;
+  for (size_t i = 0; i < N; i++) {
+    p.push_back(gates::Z::value.asDiagonal());
+  }
+  if (term.adj) {
+    p.push_back(sp.adjoint());
+  } else {
+    p.push_back(sp);
+  }
+  p[0] = sp * p[0];
+
+  double a = term.a;
+  if (term.j < term.i && !term.adj) {
+    a = -a;
+  }
+  Eigen::MatrixXcd g = a * p[0];
+
+  for (uint32_t i = 1; i < p.size(); i++) {
+    Eigen::MatrixXcd gi = p[i];
+    Eigen::MatrixXcd g0 = g;
+    g = Eigen::kroneckerProduct(gi, g0);
+  }
+
+  return g + g.adjoint();
+}
+
+QubitInterval get_term_support(const QuadraticTerm& term) {
+  uint32_t i = std::min(term.i, term.j);
+  uint32_t j = std::max(term.i, term.j);
+
+  return std::make_pair(i, j+1);
+}
+
+Qubits FreeFermionGate::get_support() const {
+  std::set<uint32_t> support;
+
+  // Get total support
+  for (const auto& term : terms) {
+    Qubits term_support = to_qubits(get_term_support(term));
+    for (auto q : term_support) {
+      support.insert(q);
+    }
+  }
+
+  return Qubits(support.begin(), support.end());
+}
+
+std::shared_ptr<Gate> FreeFermionGate::to_gate() const {
+  if (!t) {
+    throw std::runtime_error("Cannot convert a FreeFermionGate with unbound parameter to a matrix. Call bind_params([t]) first.");
+  }
+
+
+  Qubits support = get_support();
+  FreeFermionGate gate(*this);
+  Qubits map = reduced_support(support, num_qubits);
+  gate.apply_qubit_map(map);
+
+  size_t N = support.size();
+  Eigen::MatrixXcd H = Eigen::MatrixXcd::Zero(1u << N, 1u << N);
+  for (const auto& term : gate.terms) {
+    H += embed_unitary(term_to_matrix(term), to_qubits(get_term_support(term)), N);
+  }
+
+  Eigen::MatrixXcd U = (gates::i * t.value() * H).exp();
+  return std::make_shared<MatrixGate>(U, support);
+}
+
+Eigen::MatrixXcd FreeFermionGate::to_hamiltonian() const {
+  Eigen::MatrixXcd A = Eigen::MatrixXcd::Zero(num_qubits, num_qubits);
+  Eigen::MatrixXcd B = Eigen::MatrixXcd::Zero(num_qubits, num_qubits);
+
+  for (const auto& term : terms) {
+    if (term.adj) {
+      A(term.i, term.j) += term.a;
+      A(term.j, term.i) += term.a;
+    } else {
+      B(term.i, term.j) += term.a;
+      B(term.j, term.i) += -term.a;
+    }
+  }
+
+  Eigen::MatrixXcd Hm(2*num_qubits, 2*num_qubits);
+  Hm << A,            B,
+        B.adjoint(), -A.transpose();
+
+  return Hm;
+}
+
 Instruction copy_instruction(const Instruction& inst) {
   return std::visit(quantumcircuit_utils::overloaded {
     [](std::shared_ptr<Gate> gate) {
       return Instruction(gate->clone());
     },
-    [](Measurement m) {
-      return Instruction(Measurement(m.qubits, m.pauli, m.outcome));
+    [](const FreeFermionGate& gate) {
+      return Instruction(gate);;
     },
-    [](WeakMeasurement m) {
-      return Instruction(WeakMeasurement(m.qubits, m.beta, m.pauli, m.outcome));
+    [](const Measurement& m) {
+      return Instruction(m);
+    },
+    [](const WeakMeasurement& m) {
+      return Instruction(m);
     }
   }, inst);
 }
@@ -477,12 +650,30 @@ WeakMeasurement::WeakMeasurement(const Qubits& qubits, double beta, std::optiona
   }
 }
 
+size_t WeakMeasurement::num_params() const {
+  return beta ? 0 : 1;
+}
+
+WeakMeasurement WeakMeasurement::bind_params(const std::vector<double>& params) const {
+  if (params.size() != 1) {
+    throw std::runtime_error("Weak measurements accept exactly one parameter.");
+  }
+
+  WeakMeasurement m(*this);
+  m.beta = params[0];
+  return m;
+}
+
 PauliString WeakMeasurement::get_pauli() const {
   if (pauli) {
     return pauli.value();
   } else {
     return PauliString("+Z");
   }
+}
+
+bool WeakMeasurement::is_basis() const {
+  return !pauli || (pauli == PauliString("+Z"));
 }
 
 bool WeakMeasurement::is_forced() const {
@@ -499,6 +690,9 @@ Qubits get_instruction_support(const Instruction& inst) {
     [](const std::shared_ptr<Gate> gate) { 
       return gate->qubits;
     },
+    [](const FreeFermionGate& gate) {
+      return gate.get_support();
+    },
     [](const Measurement& m) { 
       return m.qubits;
     },
@@ -511,6 +705,7 @@ Qubits get_instruction_support(const Instruction& inst) {
 bool instruction_is_unitary(const Instruction& inst) {
   return std::visit(quantumcircuit_utils::overloaded {
     [](std::shared_ptr<Gate> gate) { return true; },
+    [](const FreeFermionGate& gate) { return true; },
     [](const Measurement& m) { return false; },
     [](const WeakMeasurement& m) { return false; }
   }, inst);

@@ -60,10 +60,13 @@ std::optional<MeasurementData> CliffordState::evolve(const Instruction& inst) {
 
         return std::nullopt;
       },
+      [](const FreeFermionGate& gate) -> std::optional<MeasurementData> {
+        throw std::runtime_error("Cannot evolve FreeFermionGate on Clifford states.");
+      },
       [this](const Measurement& m) -> std::optional<MeasurementData> { 
         return measure(m);
       },
-      [this](const WeakMeasurement& m) -> std::optional<MeasurementData> {
+      [](const WeakMeasurement& m) -> std::optional<MeasurementData> {
         throw std::runtime_error("Cannot perform weak measurements on Clifford states.");
       }
   }, inst);
@@ -257,5 +260,5 @@ double CliffordState::purity() const {
 }
 
 std::shared_ptr<QuantumState> CliffordState::partial_trace(const Qubits& qubits) const {
-  throw std::runtime_error("Cannot evaluate partial_trace on Clifford states.");
+  throw not_implemented();
 }

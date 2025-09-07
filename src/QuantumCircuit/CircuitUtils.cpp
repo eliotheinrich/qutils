@@ -102,7 +102,7 @@ Eigen::MatrixXcd random_real_unitary() {
   return u;
 }
 
-Eigen::MatrixXcd full_circuit_unitary(const Eigen::MatrixXcd &gate, const Qubits &qubits, uint32_t total_qubits) {
+Eigen::MatrixXcd embed_unitary(const Eigen::MatrixXcd &gate, const Qubits &qubits, uint32_t total_qubits) {
   if (total_qubits < qubits.size()) {
     throw std::invalid_argument("Too many qubits provided for gate.");
   }
@@ -152,11 +152,11 @@ ADAMOptimizer::ADAMOptimizer(
   double learning_rate, double beta1, double beta2, double epsilon,
   bool noisy_gradients, double gradient_noise
 ) : learning_rate(learning_rate), beta1(beta1), beta2(beta2), epsilon(epsilon), noisy_gradients(noisy_gradients), gradient_noise(gradient_noise) {
-  this->generator.seed(randi());
-  this->noise_distribution = std::normal_distribution<double>(0.0, this->gradient_noise);
+  generator.seed(randi());
+  noise_distribution = std::normal_distribution<double>(0.0, this->gradient_noise);
 
-  this->params_initialized = false;
-  this->num_params = 0;
+  params_initialized = false;
+  num_params = 0;
 }
 
 void ADAMOptimizer::initialize(size_t num_params) {
@@ -165,6 +165,14 @@ void ADAMOptimizer::initialize(size_t num_params) {
   m.resize(num_params, 0.0);
   v.resize(num_params, 0.0);
   this->num_params = num_params;
+}
+
+void ADAMOptimizer::reset() {
+  t = 1;
+  params_initialized = false;
+  m.resize(0, 0.0);
+  v.resize(0, 0.0);
+  this->num_params = 0;
 }
 
 std::vector<double> ADAMOptimizer::step(const std::vector<double>& params, const std::vector<double>& gradients_) {

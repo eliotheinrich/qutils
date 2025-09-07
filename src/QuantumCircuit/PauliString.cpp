@@ -303,6 +303,16 @@ bool PauliString::hermitian() const {
   return !(phase & 0b1); // mod 2
 }
 
+bool PauliString::is_basis() const {
+  Qubits support = get_support();
+  if (support.size() != 1) {
+    return false;
+  } 
+
+  uint32_t q = support[0];
+  return get_z(q) && !get_x(q) && hermitian();
+}
+
 PauliString PauliString::operator*(const PauliString& other) const {
   if (num_qubits != other.num_qubits) {
     throw std::runtime_error(fmt::format("Multiplying PauliStrings with {} qubits and {} qubits do not match.", num_qubits, other.num_qubits));
@@ -353,13 +363,13 @@ Eigen::Matrix2cd PauliString::to_matrix(uint32_t i) const {
 
   Eigen::Matrix2cd g;
   if (s == "I") {
-    g << 1, 0, 0, 1;
+    g = gates::I::value.asDiagonal();
   } else if (s == "X") {
-    g << 0, 1, 1, 0;
+    g << gates::X::value;
   } else if (s == "Y") {
-    g << 0, std::complex<double>(0.0, -1.0), std::complex<double>(0.0, 1.0), 0;
+    g = gates::Y::value;
   } else {
-    g << 1, 0, 0, -1;
+    g = gates::Z::value.asDiagonal();
   }
 
   return g;
@@ -525,11 +535,15 @@ void PauliString::evolve(const QuantumCircuit& qc) {
           throw std::runtime_error(fmt::format("Invalid instruction \"{}\" provided to PauliString.evolve.", name));
         }
       },
-      [](Measurement m) { 
-        throw std::runtime_error(fmt::format("Cannot do measure on a single PauliString."));
+      [](const FreeFermionGate& gate) {
+        // TODO detect when fermionic gate is Clifford?
+        throw std::runtime_error("Cannot evolve arbitrary fermionic gate on PauliString.");
       },
-      [](WeakMeasurement m) { 
-        throw std::runtime_error(fmt::format("Cannot do weak measurement on a single PauliString."));
+      [](const Measurement& m) { 
+        throw std::runtime_error("Cannot do measure on a single PauliString.");
+      },
+      [](const WeakMeasurement& m) { 
+        throw std::runtime_error("Cannot do weak measurement on a single PauliString.");
       },
     }, inst);
   }

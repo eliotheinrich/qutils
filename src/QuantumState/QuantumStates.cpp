@@ -228,10 +228,18 @@ void QuantumState::evolve_diagonal(const Eigen::VectorXcd& gate) {
   evolve(Eigen::MatrixXcd(gate.asDiagonal())); 
 }
 
+void QuantumState::evolve(const FreeFermionGate& gate) {
+  evolve(gate.to_gate());
+}
+
 std::optional<MeasurementData> QuantumState::evolve(const Instruction& inst) {
   return std::visit(quantumcircuit_utils::overloaded{
     [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
       _evolve(gate->define(), gate->qubits); 
+      return std::nullopt;
+    },
+    [this](const FreeFermionGate& gate) -> std::optional<MeasurementData> {
+      evolve(gate);
       return std::nullopt;
     },
     [this](const Measurement& m) -> std::optional<MeasurementData> { 

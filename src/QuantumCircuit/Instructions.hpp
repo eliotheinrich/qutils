@@ -5,6 +5,7 @@
 
 #include <unordered_set>
 #include <vector>
+#include <map>
 #include <variant>
 #include <complex>
 #include <memory>
@@ -20,34 +21,34 @@
 
 namespace gates {
   constexpr double sqrt2i_ = 0.707106781186547524400844362104849;
-  constexpr std::complex<double> i_ = std::complex<double>(0.0, 1.0);
+  constexpr std::complex<double> i = std::complex<double>(0.0, 1.0);
 
   struct H { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << sqrt2i_, sqrt2i_, sqrt2i_, -sqrt2i_).finished(); };
 
   struct I { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, 1.0).finished(); };
   struct X { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << 0.0, 1.0, 1.0, 0.0).finished(); };
-  struct Y { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << 0.0, -i_, i_, 0.0).finished(); };
-  struct Z { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, -1.0).finished(); };
+  struct Y { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << 0.0,-i, i, 0.0).finished(); };
+  struct Z { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0,-1.0).finished(); };
 
-  struct sqrtX { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << (1.0 + i_)/2.0, (1.0 - i_)/2.0, (1.0 - i_)/2.0, (1.0 + i_)/2.0).finished(); };
-  struct sqrtY { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << (1.0 + i_)/2.0, (-1.0 - i_)/2.0, (1.0 + i_)/2.0, (1.0 + i_)/2.0).finished(); };
-  struct sqrtZ { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, i_).finished(); };
+  struct sqrtX { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << (1.0 + i)/2.0, ( 1.0 - i)/2.0, (1.0 - i)/2.0, (1.0 + i)/2.0).finished(); };
+  struct sqrtY { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << (1.0 + i)/2.0, (-1.0 - i)/2.0, (1.0 + i)/2.0, (1.0 + i)/2.0).finished(); };
+  struct sqrtZ { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, i).finished(); };
 
-  struct sqrtXd { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << (1.0 - i_)/2.0, (1.0 + i_)/2.0, (1.0 + i_)/2.0, (1.0 - i_)/2.0).finished(); };
-  struct sqrtYd { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << (1.0 - i_)/2.0, (1.0 - i_)/2.0, (-1.0 + i_)/2.0, (1.0 - i_)/2.0).finished(); };
-  struct sqrtZd { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, -i_).finished(); };
+  struct sqrtXd { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << (1.0 - i)/2.0, (1.0 + i)/2.0, ( 1.0 + i)/2.0, (1.0 - i)/2.0).finished(); };
+  struct sqrtYd { static inline const Eigen::Matrix2cd value = (Eigen::Matrix2cd() << (1.0 - i)/2.0, (1.0 - i)/2.0, (-1.0 + i)/2.0, (1.0 - i)/2.0).finished(); };
+  struct sqrtZd { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, -i).finished(); };
 
-  struct T { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, sqrt2i_*(1.0 + i_)).finished(); };
-  struct Td { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, sqrt2i_*(1.0 - i_)).finished(); };
+  struct T { static inline const Eigen::Vector2cd value  = (Eigen::Vector2cd() << 1.0, sqrt2i_*(1.0 + i)).finished(); };
+  struct Td { static inline const Eigen::Vector2cd value = (Eigen::Vector2cd() << 1.0, sqrt2i_*(1.0 - i)).finished(); };
 
   struct CX { static inline const Eigen::Matrix4cd value = (Eigen::Matrix4cd() << 1, 0, 0, 0, 
                                                                                   0, 0, 0, 1, 
                                                                                   0, 0, 1, 0, 
                                                                                   0, 1, 0, 0).finished(); };
   struct CY { static inline const Eigen::Matrix4cd value = (Eigen::Matrix4cd() << 1, 0, 0, 0, 
-                                                                                  0, 0, 0, -i_, 
+                                                                                  0, 0, 0,-i, 
                                                                                   0, 0, 1, 0, 
-                                                                                  0, i_, 0, 0).finished(); };
+                                                                                  0, i, 0, 0).finished(); };
   struct CZ { static inline const Eigen::Vector4cd value = (Eigen::Vector4cd() << 1, 1, 1, -1).finished(); };
   struct SWAP { static inline const Eigen::Matrix4cd value = (Eigen::Matrix4cd() << 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1).finished(); };
 }
@@ -371,6 +372,85 @@ bool MemoizedGate<GateType>::defined = false;
 
 std::shared_ptr<Gate> parse_gate(const std::string& s, const Qubits& qubits);
 
+static inline bool is_hermitian(const Eigen::MatrixXcd& H) {
+  return H.isApprox(H.adjoint());
+}
+
+static inline bool is_antisymmetric(const Eigen::MatrixXcd& A) {
+  return A.isApprox(-A.transpose());
+}
+
+static inline bool is_unitary(const Eigen::MatrixXcd& U) {
+  Eigen::MatrixXcd I = Eigen::MatrixXcd::Identity(U.rows(), U.cols());
+  return (U.adjoint() * U).isApprox(I);
+}
+
+struct QuadraticTerm {
+  uint32_t i;
+  uint32_t j;
+  double a;
+  bool adj;
+};
+
+Eigen::MatrixXcd term_to_matrix(const QuadraticTerm& term);
+QubitInterval get_term_support(const QuadraticTerm& term);
+Eigen::MatrixXcd fermion_operator(size_t k, size_t num_qubits);
+PauliString majorana_operator(size_t k, size_t num_qubits);
+
+class FreeFermionGate {
+  private:
+    uint32_t num_qubits;
+    std::vector<QuadraticTerm> terms;
+
+  public:
+    std::optional<double> t;
+    bool adj;
+
+    FreeFermionGate()=default;
+    FreeFermionGate(const FreeFermionGate& other)=default;
+    
+    FreeFermionGate(uint32_t num_qubits, std::optional<double> t=std::nullopt, bool adj=false)
+      : num_qubits(num_qubits), t(t), adj(adj) { }
+
+
+    uint32_t num_params() const {
+      return t ? 0 : 1;
+    }
+
+    void add_term(uint32_t i, uint32_t j, double a, bool adj=true) {
+      size_t i1 = std::min(i, j);
+      size_t i2 = std::max(i, j);
+      double sign = (i1 != i && !adj) ? -1.0 : 1.0;
+      double amplitude = sign * a;
+      std::tuple<size_t, size_t, bool> idx = {i1, i2, adj};
+      terms.push_back({i, j, amplitude, adj});
+    }
+
+    std::string label() const;
+
+    std::string to_string() const;
+
+    Qubits get_support() const;
+    Eigen::MatrixXcd to_matrix() const;
+    std::shared_ptr<Gate> to_gate() const;
+
+    FreeFermionGate bind_params(const std::vector<double>& params) const;
+
+    void apply_qubit_map(const Qubits& qubits);
+
+    Eigen::MatrixXcd to_hamiltonian() const;
+
+    FreeFermionGate adjoint() const {
+      auto gate = FreeFermionGate(*this);
+      gate.adj = !gate.adj;
+      return gate;
+    }
+
+    bool is_clifford() const {
+      return false;
+    }
+};
+
 struct Measurement {
   Qubits qubits;
   std::optional<PauliString> pauli;
@@ -386,17 +466,20 @@ struct Measurement {
 
 struct WeakMeasurement {
   Qubits qubits;
-  double beta;
+  std::optional<double> beta;
   std::optional<PauliString> pauli;
   std::optional<bool> outcome;
 
   WeakMeasurement(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
+  size_t num_params() const;
+  WeakMeasurement bind_params(const std::vector<double>& beta) const;
   PauliString get_pauli() const;
+  bool is_basis() const;
   bool is_forced() const;
   bool get_outcome() const;
 };
 
-using Instruction = std::variant<std::shared_ptr<Gate>, Measurement, WeakMeasurement>;
+using Instruction = std::variant<std::shared_ptr<Gate>, FreeFermionGate, Measurement, WeakMeasurement>;
 
 template <>
 struct fmt::formatter<Instruction> {
@@ -407,39 +490,48 @@ struct fmt::formatter<Instruction> {
   auto format(const Instruction& inst, FormatContext& ctx) const {
     auto inst_to_string = [](const Instruction& inst) {
 		  return std::visit(quantumcircuit_utils::overloaded {
-          [](std::shared_ptr<Gate> gate) -> std::string {
-            std::string gate_str = gate->label() + " ";
-            for (auto const &q : gate->qubits) {
-              gate_str += fmt::format("{} ", q);
-            }
-
-            return gate_str;
-          },
-          [](const Measurement& m) -> std::string {
-            if (m.is_basis()) {
-              return fmt::format("mzr {}{}", m.qubits[0], m.is_forced() ? fmt::format(" -> {}", m.get_outcome()) : "");
-            }
-            std::string meas_str = fmt::format("measure({}) ", m.get_pauli());
-            for (auto const &q : m.qubits) {
-              meas_str += fmt::format("{} ", q);
-            }
-
-            if (m.outcome) {
-              meas_str += fmt::format("-> {}", m.outcome.value());
-            }
-            return meas_str;
-          },
-          [](const WeakMeasurement& m) -> std::string {
-            std::string meas_str = fmt::format("weak_measure({}, {:.5f}) ", m.get_pauli(), m.beta);
-            for (auto const &q : m.qubits) {
-              meas_str += fmt::format("{} ", q);
-            }
-
-            if (m.outcome) {
-              meas_str += fmt::format("-> {}", m.outcome.value());
-            }
-            return meas_str;
+        [](std::shared_ptr<Gate> gate) -> std::string {
+          std::string gate_str = gate->label() + " ";
+          for (auto const &q : gate->qubits) {
+            gate_str += fmt::format("{} ", q);
           }
+
+          return gate_str;
+        },
+        [](const FreeFermionGate& gate) -> std::string {
+          std::string gate_str = gate.label() + " ";
+          for (auto const &q : gate.get_support()) {
+            gate_str += fmt::format("{} ", q);
+          }
+
+          return gate_str;
+        },
+        [](const Measurement& m) -> std::string {
+          if (m.is_basis()) {
+            return fmt::format("mzr {}{}", m.qubits[0], m.is_forced() ? fmt::format(" -> {}", m.get_outcome()) : "");
+          }
+          std::string meas_str = fmt::format("measure({}) ", m.get_pauli());
+          for (auto const &q : m.qubits) {
+            meas_str += fmt::format("{} ", q);
+          }
+
+          if (m.outcome) {
+            meas_str += fmt::format("-> {}", m.outcome.value());
+          }
+          return meas_str;
+        },
+        [](const WeakMeasurement& m) -> std::string {
+          std::string beta = m.beta ? fmt::format("{:.5f}", m.beta.value()) : "beta";
+          std::string meas_str = fmt::format("weak_measure({}, {}) ", m.get_pauli(), beta);
+          for (auto const &q : m.qubits) {
+            meas_str += fmt::format("{} ", q);
+          }
+
+          if (m.outcome) {
+            meas_str += fmt::format("-> {}", m.outcome.value());
+          }
+          return meas_str;
+        }
       }, inst);
     };
 

@@ -22,7 +22,7 @@ Eigen::MatrixXcd haar_unitary(uint32_t num_qubits);
 
 Eigen::MatrixXcd random_real_unitary();
 
-Eigen::MatrixXcd full_circuit_unitary(const Eigen::MatrixXcd &gate, const Qubits &qubits, uint32_t total_qubits);
+Eigen::MatrixXcd embed_unitary(const Eigen::MatrixXcd &gate, const Qubits &qubits, uint32_t total_qubits);
 
 Eigen::MatrixXcd normalize_unitary(Eigen::MatrixXcd &unitary);
 
@@ -54,5 +54,6 @@ class ADAMOptimizer {
 			bool noisy_gradients=false, double gradient_noise=0.01
 		);
 
+    void reset();
     std::vector<double> step(const std::vector<double>& params, const std::vector<double>& gradients);
 };

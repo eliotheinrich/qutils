@@ -172,7 +172,7 @@ std::complex<double> DensityMatrix::expectation(const PauliString &p) const {
 }
 
 std::complex<double> DensityMatrix::expectation(const Eigen::MatrixXcd& m, const Qubits& qubits) const {
-  Eigen::MatrixXcd M = full_circuit_unitary(m, qubits, num_qubits);
+  Eigen::MatrixXcd M = embed_unitary(m, qubits, num_qubits);
   return expectation(M);
 }
 
@@ -211,7 +211,7 @@ void DensityMatrix::evolve(const Eigen::MatrixXcd& gate) {
 
 void DensityMatrix::evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) {
   assert_gate_shape(gate, qubits);
-	evolve(full_circuit_unitary(gate, qubits, num_qubits));
+	evolve(embed_unitary(gate, qubits, num_qubits));
 }
 
 void DensityMatrix::evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) {
@@ -250,19 +250,39 @@ void DensityMatrix::evolve_diagonal(const Eigen::VectorXcd& gate) {
 	}
 }
 
-MeasurementData DensityMatrix::mzr(uint32_t q) {
-	for (uint32_t i = 0; i < basis; i++) {
-		for (uint32_t j = 0; j < basis; j++) {
-			uint32_t q1 = (i >> q) & 1u;
-			uint32_t q2 = (j >> q) & 1u;
+MeasurementData DensityMatrix::mzr(uint32_t q, std::optional<bool> outcome_opt) {
+  if (outcome_opt) {
+    bool outcome = outcome_opt.value();
+    double prob_zero = mzr_prob(q, 0);
+    check_forced_measure(outcome, prob_zero);
 
-			if (q1 != q2) {
-				data(i, j) = 0;
-			}
-		}
-	}
+    for (uint32_t i = 0; i < basis; i++) {
+      for (uint32_t j = 0; j < basis; j++) {
+        uint32_t q1 = (i >> q) & 1u;
+        uint32_t q2 = (j >> q) & 1u;
 
-  
+        if (q1 != outcome || q2 != outcome) {
+          data(i, j) = 0;
+        }
+      }
+    }
+
+    data /= trace();
+
+    double prob_outcome = outcome ? (1.0 - prob_zero) : prob_zero;
+    return {outcome, prob_outcome};
+  } else {
+    for (uint32_t i = 0; i < basis; i++) {
+      for (uint32_t j = 0; j < basis; j++) {
+        uint32_t q1 = (i >> q) & 1u;
+        uint32_t q2 = (j >> q) & 1u;
+
+        if (q1 != q2) {
+          data(i, j) = 0;
+        }
+      }
+    }
+  }
 }
 
 double DensityMatrix::mzr_prob(uint32_t q, bool outcome) const {
@@ -280,36 +300,10 @@ double DensityMatrix::mzr_prob(uint32_t q, bool outcome) const {
   }
 }
 
-MeasurementData DensityMatrix::forced_mzr(uint32_t q, bool outcome) {
-  double prob_zero = mzr_prob(q, 0);
-  check_forced_measure(outcome, prob_zero);
-
-	for (uint32_t i = 0; i < basis; i++) {
-		for (uint32_t j = 0; j < basis; j++) {
-			uint32_t q1 = (i >> q) & 1u;
-			uint32_t q2 = (j >> q) & 1u;
-
-			if (q1 != outcome || q2 != outcome) {
-				data(i, j) = 0;
-			}
-		}
-	}
-
-  data /= trace();
-
-  double prob_outcome = outcome ? (1.0 - prob_zero) : prob_zero;
-  return {outcome, prob_outcome};
-}
-
-
 MeasurementData DensityMatrix::measure(const Measurement& m) {
   Qubits qubits = m.qubits;
   if (m.is_basis()) { // Special, more efficient behavior for computational basis measurements
-    if (m.is_forced()) {
-      return forced_mzr(qubits[0], m.get_outcome());
-    } else {
-      return mzr(qubits[0]);
-    }
+    mzr(m.qubits[0], m.outcome);
   }
 
   PauliString p = m.get_pauli();
@@ -351,12 +345,18 @@ MeasurementData DensityMatrix::measure(const Measurement& m) {
 }
 
 MeasurementData DensityMatrix::weak_measure(const WeakMeasurement& m) {
+  if (m.num_params() > 0) {
+    throw std::runtime_error("Cannot apply weak measurement with unbound strength.");
+  }
+
+  double beta = m.beta.value();
+
   Qubits qubits = m.qubits;
   PauliString pauli = m.get_pauli();
 
   PauliString pauli_ = pauli.superstring(qubits, num_qubits);
-  Eigen::MatrixXcd matrix = m.beta * pauli_.to_matrix();
-  double prob_zero = (1 + std::tanh(2*m.beta) * expectation(pauli_).real())/2.0;
+  Eigen::MatrixXcd matrix = beta * pauli_.to_matrix();
+  double prob_zero = (1 + std::tanh(2*beta) * expectation(pauli_).real())/2.0;
 
   if (m.is_forced()) {
     bool outcome = m.get_outcome();
@@ -372,8 +372,8 @@ MeasurementData DensityMatrix::weak_measure(const WeakMeasurement& m) {
     double prob_outcome = outcome ? prob_zero : (1.0 - prob_zero);
     return {outcome, prob_outcome};
   } else {
-    Eigen::MatrixXcd P0 = (-matrix).exp()/std::sqrt(2 * std::cosh(2*m.beta));
-    Eigen::MatrixXcd P1 = ( matrix).exp()/std::sqrt(2 * std::cosh(2*m.beta));
+    Eigen::MatrixXcd P0 = (-matrix).exp()/std::sqrt(2 * std::cosh(2*beta));
+    Eigen::MatrixXcd P1 = ( matrix).exp()/std::sqrt(2 * std::cosh(2*beta));
 
     data = P0*data*P0.adjoint() + P1*data*P1.adjoint();
     return {0, prob_zero}; // No definite outcome; default to 0
@@ -458,18 +458,4 @@ struct DensityMatrix::glaze {
   );
 };
 
-std::vector<char> DensityMatrix::serialize() const {
-  std::vector<char> bytes;
-  auto write_error = glz::write_beve(*this, bytes);
-  if (write_error) {
-    throw std::runtime_error(fmt::format("Error writing DensityMatrix to binary: \n{}", glz::format_error(write_error, bytes)));
-  }
-  return bytes;
-}
-
-void DensityMatrix::deserialize(const std::vector<char>& bytes) {
-  auto parse_error = glz::read_beve(*this, bytes);
-  if (parse_error) {
-    throw std::runtime_error(fmt::format("Error reading DensityMatrix from binary: \n{}", glz::format_error(parse_error, bytes)));
-  }
-}
+DEFINE_SERIALIZATION(DensityMatrix);

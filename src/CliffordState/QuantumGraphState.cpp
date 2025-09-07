@@ -591,18 +591,4 @@ struct glz::meta<QuantumGraphState> {
   );
 };
 
-std::vector<char> QuantumGraphState::serialize() const {
-  std::vector<char> bytes;
-  auto write_error = glz::write_beve(*this, bytes);
-  if (write_error) {
-    throw std::runtime_error(fmt::format("Error writing QuantumGraphState to binary: \n{}", glz::format_error(write_error, bytes)));
-  }
-  return bytes;
-}
-
-void QuantumGraphState::deserialize(const std::vector<char>& bytes) {
-  auto parse_error = glz::read_beve(*this, bytes);
-  if (parse_error) {
-    throw std::runtime_error(fmt::format("Error reading QuantumGraphState from binary: \n{}", glz::format_error(parse_error, bytes)));
-  }
-}
+DEFINE_SERIALIZATION(QuantumGraphState);

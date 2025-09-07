@@ -135,7 +135,7 @@ std::complex<double> Statevector::expectation(const PauliString& p) const {
 }
 
 std::complex<double> Statevector::expectation(const Eigen::MatrixXcd& m, const Qubits& qubits) const {
-  Eigen::MatrixXcd M = full_circuit_unitary(m, qubits, num_qubits);
+  Eigen::MatrixXcd M = embed_unitary(m, qubits, num_qubits);
   return expectation(M);
 }
 
@@ -180,38 +180,34 @@ double Statevector::mzr_prob(uint32_t q, bool outcome) const {
   }
 }
 
-MeasurementData Statevector::forced_mzr(uint32_t q, bool outcome) {
-  double prob_zero = mzr_prob(q, 0);
-  check_forced_measure(outcome, prob_zero);
+MeasurementData Statevector::mzr(uint32_t q, std::optional<bool> outcome_opt) {
+  if (outcome_opt) {
+    bool outcome = outcome_opt.value();
+    double prob_zero = mzr_prob(q, 0);
+    check_forced_measure(outcome, prob_zero);
 
-  uint32_t s = 1u << num_qubits;
-  for (uint32_t i = 0; i < s; i++) {
-    if (((i >> q) & 1u) != outcome) {
-      data(i) = 0.;
+    uint32_t s = 1u << num_qubits;
+    for (uint32_t i = 0; i < s; i++) {
+      if (((i >> q) & 1u) != outcome) {
+        data(i) = 0.;
+      }
     }
+
+    normalize();
+    double prob_outcome = outcome ? (1.0 - prob_zero) : prob_zero;
+    return {outcome, prob_outcome};
+  } else {
+    double prob_zero = mzr_prob(q, 0);
+    bool b = !(randf() < prob_zero);
+
+    return mzr(q, b);
   }
-
-  normalize();
-  double prob_outcome = outcome ? (1.0 - prob_zero) : prob_zero;
-  return {outcome, prob_outcome};
-}
-
-MeasurementData Statevector::mzr(uint32_t q) {
-  double prob_zero = mzr_prob(q, 0);
-  uint32_t outcome = !(randf() < prob_zero);
-
-  return forced_mzr(q, outcome);
 }
 
 MeasurementData Statevector::measure(const Measurement& m) {
   Qubits qubits = m.qubits;
   if (m.is_basis()) {
-    if (m.is_forced()) {
-      return forced_mzr(qubits[0], m.get_outcome());
-    } else {
-      auto result = mzr(qubits[0]);
-      return result;
-    }
+    return mzr(qubits[0], m.outcome);
   }
 
   PauliString pauli = m.get_pauli();
@@ -241,11 +237,17 @@ MeasurementData Statevector::measure(const Measurement& m) {
 }
 
 MeasurementData Statevector::weak_measure(const WeakMeasurement& m) {
+  if (m.num_params() > 0) {
+    throw std::runtime_error("Cannot apply weak measurement with unbound strength.");
+  }
+
+  double beta = m.beta.value();
+
   Qubits qubits = m.qubits;
   PauliString pauli = m.get_pauli();
 
   // <psi | e^(2*beta*P)/(2*cosh(2*beta)) |psi> = (1 + tanh(2*beta)*<P>)/2
-  double prob_zero = (1 + std::tanh(2*m.beta) * expectation(pauli.superstring(qubits, num_qubits)).real())/2.0;
+  double prob_zero = (1 + std::tanh(2*beta) * expectation(pauli.superstring(qubits, num_qubits)).real())/2.0;
 
   bool b;
   if (m.is_forced()) {
@@ -260,7 +262,7 @@ MeasurementData Statevector::weak_measure(const WeakMeasurement& m) {
     t = -t;
   }
 
-  Eigen::MatrixXcd proj = (m.beta*t).exp();
+  Eigen::MatrixXcd proj = (beta*t).exp();
 
   evolve(proj, qubits);
   normalize();
@@ -461,18 +463,4 @@ struct Statevector::glaze {
   );
 };
 
-std::vector<char> Statevector::serialize() const {
-  std::vector<char> bytes;
-  auto write_error = glz::write_beve(*this, bytes);
-  if (write_error) {
-    throw std::runtime_error(fmt::format("Error writing Statevector to binary: \n{}", glz::format_error(write_error, bytes)));
-  }
-  return bytes;
-}
-
-void Statevector::deserialize(const std::vector<char>& bytes) {
-  auto parse_error = glz::read_beve(*this, bytes);
-  if (parse_error) {
-    throw std::runtime_error(fmt::format("Error reading Statevector from binary: \n{}", glz::format_error(parse_error, bytes)));
-  }
-}
+DEFINE_SERIALIZATION(Statevector);

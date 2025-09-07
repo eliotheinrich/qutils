@@ -142,9 +142,12 @@ bool test_qc_reduce() {
   std::sort(expected.begin(), expected.end());
   ASSERT(support == expected);
 
-  auto [qc_, support_] = qc.reduce();
+  Qubits map = reduced_support(support, nqb);
+  QuantumCircuit qc_(qc);
+  qc_.apply_qubit_map(map);
+  qc_.resize(support.size());
   QuantumCircuit qc_r(nqb);
-  qc_r.append(qc_, support_);
+  qc_r.append(qc_, support);
 
   std::string s1 = qc.to_string();
   std::string s2 = qc_r.to_string();

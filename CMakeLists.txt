@@ -65,8 +65,8 @@ include_directories(
 )
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/QuantumCircuit)
-add_subdirectory(${PROJECT_SOURCE_DIR}/src/FreeFermion)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/QuantumState)
+add_subdirectory(${PROJECT_SOURCE_DIR}/src/FreeFermion)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/CliffordState)
 
 if (QUTILS_BUILD_TESTS)

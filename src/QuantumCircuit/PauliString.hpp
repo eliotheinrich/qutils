@@ -230,13 +230,11 @@ class PauliString {
     static uint8_t get_multiplication_phase(const PauliString& p1, const PauliString& p2);
 
     bool hermitian() const;
+    bool is_basis() const;
 
     PauliString operator*(const PauliString& other) const;
-
     PauliString operator-();
-
     bool operator==(const PauliString &rhs) const;
-
     bool operator!=(const PauliString &rhs) const;
 
     friend std::ostream& operator<< (std::ostream& stream, const PauliString& p) {
@@ -246,15 +244,12 @@ class PauliString {
 
 
     Eigen::Matrix2cd to_matrix(uint32_t i) const;
-
     Eigen::MatrixXcd to_matrix() const;
 
     Pauli to_pauli(uint32_t i) const;
-
     std::vector<Pauli> to_pauli() const;
 
     QubitInterval support_range() const;
-
     Qubits get_support() const;
 
     std::string to_op(uint32_t i) const;
@@ -274,7 +269,6 @@ class PauliString {
     }
 
     std::string to_string() const;
-
     std::string to_string_ops() const;
 
     void evolve(const QuantumCircuit& qc);

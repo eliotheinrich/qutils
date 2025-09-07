@@ -139,3 +139,14 @@ std::vector<uint32_t> argsort(const std::vector<T>& vec) {
 
   return inds;
 }
+
+static Qubits reduced_support(const Qubits& support, size_t num_qubits) {
+  Qubits reduced_support = argsort(support);
+  Qubits map(num_qubits);
+  for (size_t i = 0; i < support.size(); i++) {
+    map[support[i]] = reduced_support[i];
+  }
+
+  return map;
+}
+
