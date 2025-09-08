@@ -217,7 +217,7 @@ PauliString PauliString::rand(uint32_t num_qubits) {
 
 PauliString PauliString::randh(uint32_t num_qubits) {
   PauliString p = PauliString::rand(num_qubits);
-  p.set_r(p.get_r() + p.get_r() & 0b1);
+  p.set_r(randi(0, 2) * 2);
 
   return p;
 }

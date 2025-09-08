@@ -78,20 +78,18 @@ double GaussianState::entanglement(const QubitSupport& support, uint32_t index) 
     _sites.push_back(sites[i] + num_qubits);
   }
   Eigen::VectorXi indices = Eigen::Map<Eigen::VectorXi, Eigen::Unaligned>(_sites.data(), _sites.size());
-  Eigen::MatrixXcd CA1 = C(indices, indices);
+  Eigen::MatrixXcd CA1 = C(_sites, _sites);
   Eigen::MatrixXcd CA2 = Eigen::MatrixXcd::Identity(CA1.rows(), CA1.cols()) - CA1;
 
   if (index == 1) {
-    Eigen::MatrixXcd Cn = Eigen::MatrixXcd::Zero(indices.size(), indices.size());
-    if (std::abs(CA1.determinant()) > 1e-6) {
-      Cn += CA1*CA1.log();
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXcd> es(CA1);
+    auto vals = es.eigenvalues();
+    double S = 0.0;
+    for (size_t i = 0; i < vals.size(); i++) {
+      double lambda = std::clamp(vals[i], 1e-14, 1.0 - 1e-14);
+      S += -lambda * std::log(lambda) - (1.0 - lambda) * std::log(1.0 - lambda);
     }
-
-    if (std::abs(CA2.determinant()) > 1e-6) {
-      Cn += CA2*CA2.log();
-    }
-
-    return -Cn.trace().real();
+    return S/2.0;
   } else {
     Eigen::MatrixXcd Cn = (CA1.pow(index) + CA2.pow(index)).log();
     return Cn.trace().real()/(2.0*static_cast<double>(1.0 - index));
@@ -298,6 +296,78 @@ std::string GaussianState::to_string() const {
   return s.str();
 }
 
+Majorana pauli_to_majorana(const PauliString& pauli) {
+  size_t num_qubits = pauli.num_qubits;
+
+  int phase = pauli.phase;
+  std::vector<uint32_t> parities(2 * num_qubits, 0);
+  std::vector<uint32_t> indices_unordered;
+
+  for (size_t i = 0; i < num_qubits; i++) {
+    if (pauli.get_z(i) && pauli.get_x(i)) { // Y
+      phase = (phase + 3*i) % 4;
+      for (size_t k = 0; k < 2*i; k++) {
+        indices_unordered.push_back(k);
+      }
+      indices_unordered.push_back(2*i+1);
+    } else if (pauli.get_x(i)) { // X
+      phase = (phase + 3*i) % 4;
+      for (size_t k = 0; k < 2*i; k++) {
+        indices_unordered.push_back(k);
+      }
+      indices_unordered.push_back(2*i);
+    } else if (pauli.get_z(i)) { // Z
+      phase = (phase + 3) % 4;
+      indices_unordered.push_back(2*i);
+      indices_unordered.push_back(2*i+1);
+    }
+  }
+
+  // --- Step 2. Reduce duplicates (XOR rule) ---
+  std::vector<uint32_t> counts(2*num_qubits, 0);
+  for (auto idx : indices_unordered) counts[idx]++;
+  std::vector<uint32_t> indices;
+  for (size_t k = 0; k < counts.size(); k++) {
+    if (counts[k] % 2) {
+      indices.push_back(k);
+    }
+  }
+
+  // --- Step 3. Permutation sign from reordering ---
+  // Count how many swaps to sort `indices_unordered` into ascending order.
+  std::vector<uint32_t> sorted = indices_unordered;
+  std::sort(sorted.begin(), sorted.end());
+  // Remove duplicates in the sorted version
+  sorted.erase(std::unique(sorted.begin(), sorted.end(),
+        [](uint32_t a, uint32_t b){ return a==b; }),
+      sorted.end());
+
+  // Count inversions
+  uint32_t swaps = 0;
+  for (size_t a = 0; a < indices_unordered.size(); a++) {
+    for (size_t b = a+1; b < indices_unordered.size(); b++) {
+      if (indices_unordered[a] > indices_unordered[b]) swaps++;
+    }
+  }
+
+  // Each swap multiplies by -1 = i^2
+  phase = (phase + 2*(swaps % 2)) % 4;
+
+  return {indices, phase};
+}
+
+PauliString majorana_to_pauli(const Majorana& majorana, size_t num_qubits) {
+  auto [indices, phase] = majorana;
+  PauliString pauli(num_qubits);
+  pauli.set_r(phase);
+
+  for (auto q : indices) {
+    pauli = pauli * majorana_operator(q, num_qubits);
+  }
+
+  return pauli;
+}
+
 std::complex<double> GaussianState::expectation(const PauliString& pauli) const {
   if (pauli.num_qubits != num_qubits) {
     throw std::runtime_error("Mismatched number of qubits in GaussianState.expectation(PauliString)");
@@ -308,39 +378,7 @@ std::complex<double> GaussianState::expectation(const PauliString& pauli) const 
     return 1. - 2.*occupation(q);
   }
 
-  // Constructing the corresponding Majorana string
-  int phase = 0;
-  std::vector<uint32_t> parities(2*num_qubits);;
-  for (size_t i = 0; i < num_qubits; i++) {
-    if (pauli.get_z(i) && pauli.get_x(i)) { // Y
-      phase = (phase + 3*i) % 4;
-      for (size_t k = 0; k < i; k++) {
-        parities[2*k]++;
-        parities[2*k+1]++;
-      }
-      parities[2*i+1]++;
-    } else if (pauli.get_x(i)) { // X
-      phase = (phase + 3*i) % 4;
-      for (size_t k = 0; k < i; k++) {
-        parities[2*k]++;
-        parities[2*k+1]++;
-      }
-      parities[2*i]++;
-    } else if (pauli.get_z(i)) { // Z
-      phase = (phase + 3) % 4;
-      parities[2*i]++;
-      parities[2*i+1]++;
-    }
-  }
-
-  // Every Majorana that appears an odd number of times is included in the string
-  std::vector<uint32_t> indices;
-  for (size_t i = 0; i < parities.size(); i++) {
-    if (parities[i] % 2) {
-      indices.push_back(i);
-    }
-  }
-
+  auto [indices, phase] = pauli_to_majorana(pauli);
   if (indices.size() % 2) {
     return 0.0;
   } else {
@@ -391,6 +429,50 @@ std::vector<double> GaussianState::probabilities() const {
   }
 
   return probs;
+}
+
+std::vector<PauliAmplitudes> GaussianState::sample_paulis(const std::vector<QubitSupport>& supports, size_t num_samples) {
+  if (supports.size() > 0) {
+    throw not_implemented();
+  }
+
+  Eigen::MatrixXcd M = majorana_covariance_matrix();
+  double rho = 1u << num_qubits;
+
+  std::vector<PauliAmplitudes> samples;
+  for (size_t i = 0; i < num_samples; i++) {
+    double p = 1.0;
+    std::vector<uint32_t> included_indices;
+
+    Eigen::MatrixXcd Id = Eigen::MatrixXcd::Identity(2*num_qubits, 2*num_qubits);
+    for (size_t q = 0; q < 2*num_qubits; q++) {
+      Id(q, q) = 0;
+
+      std::vector<uint32_t> idxs = included_indices;
+      for (size_t k = q+1; k < 2*num_qubits; k++) {
+        idxs.push_back(k);
+      }
+
+      Eigen::MatrixXcd Mi = (Id + M)(idxs, idxs);
+
+      // Probability that x_mu = 0
+      double pq = std::abs(Mi.determinant())/rho/p;
+
+      if (randf() < pq) {
+        p *= pq;
+      } else {
+        p *= (1.0 - pq);
+        included_indices.push_back(q);
+      }
+    }
+
+    PauliString pauli = majorana_to_pauli({included_indices, 0}, num_qubits);
+    std::vector<double> amplitudes = {std::pow(p*rho, 0.5)};
+
+    samples.push_back({pauli, amplitudes});
+  }
+
+  return samples;
 }
 
 #include <glaze/glaze.hpp>

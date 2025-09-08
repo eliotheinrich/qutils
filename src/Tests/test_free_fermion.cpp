@@ -294,7 +294,6 @@ bool test_to_gate() {
   return true;
 }
 
-// TODO put MajoranaState back in
 bool test_free_fermion_state() {
   constexpr size_t nqb = 8;
 
@@ -304,7 +303,6 @@ bool test_free_fermion_state() {
     psi.x(q);
   }
   GaussianState fermion_state(nqb, sites);
-  GaussianState majorana_state(nqb, sites);
 
   std::vector<double> op_dist = {0.3, 0.3, 0.3, 0.1, 0.1};
   normalize(op_dist);
@@ -320,51 +318,43 @@ bool test_free_fermion_state() {
       FreeFermionGate gate = R(theta, q, nqb);
       psi.evolve(gate);
       fermion_state.evolve(gate);
-      majorana_state.evolve(gate);
     } else if (gate_type == 1) {
       uint32_t q = randi(0, nqb - 1);
       FreeFermionGate gate = T(theta, q, nqb);
       psi.evolve(gate);
       fermion_state.evolve(gate);
-      majorana_state.evolve(gate);
     } else if (gate_type == 2) {
       uint32_t q = randi(0, nqb - 1);
       FreeFermionGate gate = G(theta, q, nqb);
       psi.evolve(gate);
       fermion_state.evolve(gate);
-      majorana_state.evolve(gate);
     } else if (gate_type == 3) {
       FreeFermionGate gate = random_free_fermion_gate(nqb, 4);
       psi.evolve(gate);
       fermion_state.evolve(gate);
-      majorana_state.evolve(gate);
     } else {
       uint32_t q = randi(0, nqb);
       auto [outcome, p] = psi.mzr(q);
       fermion_state.mzr(q, outcome);
-      majorana_state.mzr(q, outcome);
     }
 
     // Check state equality
     std::vector<double> c1;
     std::vector<double> c2;
-    std::vector<double> c3;
     for (uint32_t i = 0; i < nqb; i++) {
       PauliString Z(nqb);
       Z.set_z(i, 1);
       c1.push_back((1.0 - psi.expectation(Z).real()) / 2.0);
       c2.push_back(fermion_state.occupation(i));
-      c3.push_back(majorana_state.occupation(i));
     }
 
-    uint32_t index = randi(2, 3);
+    uint32_t index = randi(1, 4);
     std::vector<double> s1 = psi.get_entanglement(index);
     std::vector<double> s2 = fermion_state.get_entanglement(index);
-    std::vector<double> s3 = majorana_state.get_entanglement(index);
 
     for (size_t i = 0; i < nqb; i++) {
-      ASSERT(is_close_eps(1e-4, s1[i], s2[i], s3[i]), fmt::format("Entanglement {} at {} is not equal: \n{::.5f}\n{::.5f}\n{::.5f}", index, i, s1, s2, s3));
-      ASSERT(is_close_eps(1e-4, c1[i], c2[i], c3[i]), fmt::format("Occupations at {} are not equal: \n{::.5f}\n{::.5f}\n{::.5f}", i, c1, c2, c3));
+      ASSERT(is_close_eps(1e-4, s1[i], s2[i]), fmt::format("Entanglement {} at {} is not equal: \n{::.5f}\n{::.5f}", index, i, s1, s2));
+      ASSERT(is_close_eps(1e-4, c1[i], c2[i]), fmt::format("Occupations at {} are not equal: \n{::.5f}\n{::.5f}", i, c1, c2));
     }
   }
 
@@ -432,7 +422,7 @@ bool test_majorana_expectation() {
 
     ASSERT(is_close_eps(1e-4, c1, c2));
 
-    size_t index = randi(2, 4);
+    size_t index = randi(1, 4);
     std::vector<double> s1 = psi.get_entanglement(index);
     std::vector<double> s2 = fermion_state.get_entanglement(index);
 
@@ -490,7 +480,7 @@ bool test_bitstring_expectation() {
 
     QuantumCircuit qc(nqb);
     for (size_t j = 0; j < 10; j++) {
-      auto gate = random_free_fermion_gate(nqb, 2);
+      auto gate = random_free_fermion_gate(nqb, 4);
       qc.add_gate(gate);
     }
 
@@ -579,6 +569,81 @@ bool test_weak_mzr() {
   return true;
 }
 
+bool test_majorana_to_pauli() {
+  constexpr size_t nqb = 10;
+
+  for (size_t i = 0; i < 100; i++) {
+    PauliString pauli = PauliString::randh(nqb);
+
+    auto majorana = pauli_to_majorana(pauli);
+
+    PauliString pauli_ = majorana_to_pauli(majorana, nqb);
+
+    ASSERT(pauli == pauli_);
+  }
+
+  return true;
+}
+
+bool test_majorana_covariance_matrix() {
+  constexpr size_t nqb = 6;
+  Statevector psi(nqb);
+  GaussianState fermion_state(nqb);
+
+  QuantumCircuit qc(nqb);
+  for (size_t j = 0; j < 10; j++) {
+    auto gate = random_free_fermion_gate(nqb, 4);
+    qc.add_gate(gate);
+  }
+
+  psi.evolve(qc);
+  fermion_state.evolve(qc);
+
+  Eigen::MatrixXcd M = fermion_state.majorana_covariance_matrix();
+
+  for (size_t m = 0; m < 2*nqb; m++) {
+    for (size_t n = 0; n < 2*nqb; n++) {
+      std::complex<double> c1 = M(m, n);
+      PauliString g1 = majorana_operator(m, nqb);
+      PauliString g2 = majorana_operator(n, nqb);
+      std::complex<double> c2 = -gates::i /2.0 * (psi.expectation(g1 * g2) - psi.expectation(g2 * g1));
+      ASSERT(is_close(c1, c2));
+    }
+  }
+
+  return true;
+}
+
+
+bool test_sample_paulis() {
+  constexpr size_t nqb = 4;
+
+  QuantumCircuit qc(nqb);
+  qc.add_gate(random_free_fermion_gate(nqb, 3*nqb));
+
+  GaussianState state(nqb);
+  state.evolve(qc);
+
+  MatrixProductState mps(nqb, 1u << nqb);
+  mps.evolve(qc);
+
+  auto paulis1 = state.sample_paulis({}, 10);
+  auto paulis2 = mps.sample_paulis({}, 10);
+
+  for (auto [p, a] : paulis1) {
+    ASSERT(is_close(a[0], std::abs(mps.expectation(p))));
+    //std::cout << fmt::format("{} -> {:.3f}, {:.3f}\n", p, a[0], std::abs(mps.expectation(p)));
+  }
+
+  //std::cout << "\n\n";
+
+  //for (auto [p, a] : paulis2) {
+  //  std::cout << fmt::format("{} -> {:.3f}, {:.3f}\n", p, a[0], std::abs(mps.expectation(p)));
+  //}
+
+  return true;
+}
+
 using TestResult = std::tuple<bool, int>;
 
 #define ADD_TEST(x)                                                               \
@@ -613,6 +678,9 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_bitstring_expectation);
   ADD_TEST(test_mzr);
   ADD_TEST(test_weak_mzr);
+  ADD_TEST(test_majorana_to_pauli);
+  ADD_TEST(test_sample_paulis);
+  ADD_TEST(test_majorana_covariance_matrix);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

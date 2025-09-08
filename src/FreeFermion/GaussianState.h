@@ -70,7 +70,13 @@ class GaussianState : public MagicQuantumState {
       throw not_implemented();
     }
 
+    virtual std::vector<PauliAmplitudes> sample_paulis(const std::vector<QubitSupport>& qubits, size_t num_samples) override;
+
     struct glaze;
     virtual std::vector<char> serialize() const override;
     virtual void deserialize(const std::vector<char>& bytes) override;
 };
+
+using Majorana = std::pair<std::vector<uint32_t>, int>;
+Majorana pauli_to_majorana(const PauliString& pauli);
+PauliString majorana_to_pauli(const Majorana& majorana, size_t num_qubits);
