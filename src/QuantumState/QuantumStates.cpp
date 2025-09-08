@@ -256,27 +256,36 @@ EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts
     throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve Statevector.");
   }
 
+  BitString bits(circuit.get_num_cbits());
+
   std::vector<MeasurementData> measurements;
-  for (auto const &inst : circuit.instructions) {
-    auto result = evolve(inst);
+  for (auto const &cinst : circuit.instructions) {
+    if (!cinst.should_execute(bits)) {
+      continue;
+    }
+
+    auto result = evolve(cinst.inst);
     if (result) {
       measurements.push_back(result.value());
+      if (cinst.target) {
+        bits.set(cinst.target.value(), result->first);
+      }
     }
   }  
 
   return process_measurement_results(measurements, opts);
 }
 
-EvolveResult QuantumState::evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts) {
-  if (qubits.size() != qc.get_num_qubits()) {
+EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
+  if (qubits.size() != circuit.get_num_qubits()) {
     throw std::runtime_error("Provided qubits do not match size of circuit.");
   }
 
-  QuantumCircuit qc_mapped(qc);
-  qc_mapped.resize(num_qubits);
-  qc_mapped.apply_qubit_map(qubits);
+  QuantumCircuit circuit_mapped(circuit);
+  circuit_mapped.resize_qubits(num_qubits);
+  circuit_mapped.apply_qubit_map(qubits);
 
-  return evolve(qc_mapped, opts);
+  return evolve(circuit_mapped, opts);
 }
 
 bool QuantumState::check_forced_measure(bool& outcome, double prob_zero) {

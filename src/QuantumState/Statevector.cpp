@@ -233,6 +233,7 @@ MeasurementData Statevector::measure(const Measurement& m) {
   normalize();
 
   double prob_outcome = b ? (1.0 - prob_zero) : prob_zero;
+
   return {b, prob_outcome};
 }
 

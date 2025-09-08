@@ -164,7 +164,6 @@ struct BitString {
   BitString superstring(const std::vector<uint32_t>& sites, size_t new_num_bits) const;
 };
 
-// TODO fix segfault when gate is applied to 0-qubit PauliString
 class PauliString {
   public:
     uint32_t num_qubits;
@@ -360,7 +359,6 @@ class PauliString {
         h(0);
         (args.first->h(args.second[0]), ...);
 
-        // TODO check this for !z case
         if (phase == 2) {
           x(0);
           (args.first->x(args.second[0]), ...);

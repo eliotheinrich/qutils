@@ -170,18 +170,22 @@ NB_MODULE(qutils_bindings, m) {
     .def("num_params", &QuantumCircuit::num_params)
     .def("bind_params", &QuantumCircuit::bind_params)
     .def("length", &QuantumCircuit::length)
-    .def("mzr", [](QuantumCircuit& self, uint32_t q, std::optional<bool> outcome) { 
-      self.add_measurement(Measurement::computational_basis(q, outcome)); 
-    }, "qubit"_a, "outcome"_a = std::nullopt)
-    .def("add_measurement", [](QuantumCircuit& self, const Qubits& qubits, const PauliString& pauli, std::optional<bool> outcome) {
-      self.add_measurement(qubits, pauli, outcome);
-    }, "qubits"_a, "pauli"_a, "outcome"_a=std::nullopt)
+    .def("mzr", [](QuantumCircuit& self, uint32_t q, TargetOpt target) { 
+      self.mzr(q, target);
+    }, "qubit"_a, "target"_a=nanobind::none())
+    .def("add_measurement", [](QuantumCircuit& self, const Qubits& qubits, const PauliString& pauli, std::optional<bool> outcome, TargetOpt target) {
+      self.add_measurement(qubits, pauli, outcome, target);
+    }, "qubits"_a, "pauli"_a, "outcome"_a=nanobind::none(), "target"_a=nanobind::none())
     .def("add_weak_measurement", [](QuantumCircuit& self, const Qubits& qubits, double beta, const PauliString& pauli, std::optional<bool> outcome) {
       self.add_weak_measurement(qubits, beta, pauli, outcome);
     }, "qubits"_a, "beta"_a, "pauli"_a, "outcome"_a=std::nullopt)
-    .def("add_gate", [](QuantumCircuit& self, const Eigen::MatrixXcd& gate, const std::vector<uint32_t>& qubits) { self.add_gate(gate, qubits); })
-    .def("add_gate", [](QuantumCircuit& self, const Eigen::MatrixXcd& gate, uint32_t q) { self.add_gate(gate, q); })
-    .def("append", [](QuantumCircuit& self, const QuantumCircuit& other, const std::optional<std::vector<uint32_t>>& qubits) { 
+    .def("add_gate", [](QuantumCircuit& self, const Eigen::MatrixXcd& gate, const Qubits& qubits, ControlOpt control) { 
+      self.add_gate(gate, qubits, control); 
+    }, "gate"_a, "qubits"_a, "control"_a=nanobind::none())
+    .def("add_gate", [](QuantumCircuit& self, const Eigen::MatrixXcd& gate, uint32_t q, ControlOpt control) { 
+      self.add_gate(gate, q, control); 
+    }, "gate"_a, "qubit"_a, "control"_a=nanobind::none())
+    .def("append", [](QuantumCircuit& self, const QuantumCircuit& other, const std::optional<Qubits>& qubits) { 
       if (qubits) {
         self.append(other, qubits.value());
       } else {
@@ -206,10 +210,18 @@ NB_MODULE(qutils_bindings, m) {
     .def("cy", &QuantumCircuit::cy)
     .def("cz", &QuantumCircuit::cz)
     .def("swap", &QuantumCircuit::swap)
-    .def("rx", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { self.rx(q, theta_opt); }, "q"_a, "theta"_a = nanobind::none())
-    .def("ry", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { self.ry(q, theta_opt); }, "q"_a, "theta"_a = nanobind::none())
-    .def("rz", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { self.rz(q, theta_opt); }, "q"_a, "theta"_a = nanobind::none())
-    .def("rp", [](QuantumCircuit& self, const Qubits& qubits, const PauliString& pauli, std::optional<double> theta_opt) { self.rp(qubits, pauli, theta_opt); }, "qubits"_a, "pauli"_a, "theta"_a = nanobind::none())
+    .def("rx", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { 
+      self.rx(q, theta_opt); 
+    }, "q"_a, "theta"_a=nanobind::none())
+    .def("ry", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { 
+      self.ry(q, theta_opt); 
+    }, "q"_a, "theta"_a=nanobind::none())
+    .def("rz", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { 
+      self.rz(q, theta_opt); 
+    }, "q"_a, "theta"_a=nanobind::none())
+    .def("rp", [](QuantumCircuit& self, const Qubits& qubits, const PauliString& pauli, std::optional<double> theta_opt, ControlOpt control) {
+      self.rp(qubits, pauli, theta_opt, control); 
+    }, "qubits"_a, "pauli"_a, "theta"_a=nanobind::none(), "control"_a=nanobind::none())
     .def("random_clifford", [](QuantumCircuit& self, const std::vector<uint32_t>& qubits) {
       self.random_clifford(qubits);
     })

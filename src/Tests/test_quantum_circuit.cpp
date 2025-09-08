@@ -1,6 +1,7 @@
 #include "tests.hpp"
 
 #include "QuantumCircuit.h"
+#include "QuantumState.h"
 
 Qubits random_qubits(size_t num_qubits, size_t k) {
   std::minstd_rand rng(randi());
@@ -21,7 +22,6 @@ bool test_circuit_dag() {
   qc.mzr(0);
 
   CircuitDAG dag = qc.to_dag();
-  //std::cout << dag.to_string() << "\n";
 
   std::vector<std::set<size_t>> expected = {
     {2, 3},
@@ -62,7 +62,7 @@ bool test_qc_canonical() {
   for (size_t i = 0; i < 10; i++) {
     QuantumCircuit qc = random_unitary_circuit(nqb, 10, {2});
     CircuitDAG dag = qc.to_dag();
-    QuantumCircuit canon = QuantumCircuit::to_circuit(dag, nqb, randf() < 0.5);
+    QuantumCircuit canon = QuantumCircuit::to_circuit(dag, nqb, 0, randf() < 0.5);
     ASSERT(qc.to_matrix().isApprox(canon.to_matrix()));
   }
 
@@ -100,8 +100,8 @@ bool test_dag_to_circuit() {
     QuantumCircuit qc = random_unitary_circuit(nqb, 10, {1, 2, 3});
 
     CircuitDAG dag = qc.to_dag();
-    QuantumCircuit left = QuantumCircuit::to_circuit_left_to_right(dag, nqb);
-    QuantumCircuit right = QuantumCircuit::to_circuit_right_to_left(dag, nqb);
+    QuantumCircuit left = QuantumCircuit::to_circuit_left_to_right(dag, nqb, 0);
+    QuantumCircuit right = QuantumCircuit::to_circuit_right_to_left(dag, nqb, 0);
     ASSERT(qc.to_matrix().isApprox(left.to_matrix()));
     ASSERT(qc.to_matrix().isApprox(right.to_matrix()));
   }
@@ -145,7 +145,7 @@ bool test_qc_reduce() {
   Qubits map = reduced_support(support, nqb);
   QuantumCircuit qc_(qc);
   qc_.apply_qubit_map(map);
-  qc_.resize(support.size());
+  qc_.resize_qubits(support.size());
   QuantumCircuit qc_r(nqb);
   qc_r.append(qc_, support);
 
@@ -242,6 +242,95 @@ bool test_parametrized_circuit() {
   return true;
 }
 
+bool test_conditioned_operation() {
+  constexpr size_t nqb = 10;
+
+  for (size_t i = 0; i < 20; i++) {
+    QuantumCircuit qc(nqb, nqb);
+    for (size_t q = 0; q < nqb; q++) {
+      qc.h(q);
+      qc.mzr(q, q);
+      qc.add_gate("x", {q}, q);
+    }
+
+    EvolveOpts opts;
+    opts.return_measurement_outcomes = true;
+    opts.simplify_circuit = true;
+
+    Statevector psi(nqb);
+    auto results = std::get<std::vector<bool>>(psi.evolve(qc, opts).value());
+
+    Statevector psi0(nqb);
+
+    ASSERT(is_close(std::abs(psi.inner(psi0)), 1.0));
+  }
+
+  return true;
+}
+
+bool test_random_conditioned_operation() {
+  constexpr size_t nqb = 10;
+  
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc(nqb, nqb);
+
+    for (size_t d = 0; d < 10; d++) {
+      if (randf() < 0.8) { // Unitary
+        size_t n = randi(1, 4);
+        PauliString P = PauliString::randh(n);
+        double theta = randf(0, 2*M_PI);
+
+        Qubits qubits(n);
+        std::iota(qubits.begin(), qubits.end(), randi(0, nqb - n - 1));
+        size_t control = randi(0, nqb);
+        qc.rp(qubits, P, theta, control);
+      } else {
+        size_t n = randi(1, 4);
+        PauliString P = PauliString::randh(n);
+        double theta = randf(0, 2*M_PI);
+
+        Qubits qubits(n);
+        std::iota(qubits.begin(), qubits.end(), randi(0, nqb - n - 1));
+        size_t target = randi(0, nqb);
+        qc.add_measurement(qubits, P, std::nullopt, target);
+      }
+    }
+
+    EvolveOpts opts;
+    opts.return_measurement_outcomes = true;
+    opts.simplify_circuit = true;
+
+    // TODO ensure that outcomes are matched to correct measurements, even when order is not preserved 
+    // due to DAG contraction/reordering 
+    Statevector psi1(nqb);
+    auto results1 = std::get<std::vector<bool>>(psi1.evolve(qc, opts).value());
+
+    qc.set_measurement_outcomes(results1);
+
+    Statevector psi2(nqb);
+    auto results2 = std::get<std::vector<bool>>(psi2.evolve(qc, opts).value());
+  }
+
+
+  return true;
+}
+
+bool test_simplify_cbits() {
+  constexpr size_t nqb = 4;
+  QuantumCircuit qc(nqb, nqb);
+  for (size_t k = 0; k < 10; k++) {
+    qc.add_gate("x", {randi(0, nqb)}, {0});
+  }
+
+  QuantumCircuit simple = qc.simplify(randf() < 0.5);
+
+  // All gates depend on each other causally through 0th classical bit. Do not allow
+  // for any rearrangement
+  ASSERT(qc.to_string() == simple.to_string());
+
+  return true;
+}
+
 double objective(const std::vector<double>& params) {
   return std::pow(params[0] - 3.0, 2);
 }
@@ -291,9 +380,6 @@ int main(int argc, char *argv[]) {
       test_names.insert(argv[i]);
     }
   }
-  int i = randi();
-  std::cout << fmt::format("Seeding {}\n", i);
-  Random::seed_rng(i);
 
   ADD_TEST(test_circuit_dag);
   ADD_TEST(test_qc_reduce);
@@ -302,7 +388,10 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_qc_simplify);
   ADD_TEST(test_pauli);
   ADD_TEST(test_parametrized_circuit);
+  ADD_TEST(test_conditioned_operation);
+  //ADD_TEST(test_random_conditioned_operation);
   ADD_TEST(test_adam);
+  ADD_TEST(test_simplify_cbits);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

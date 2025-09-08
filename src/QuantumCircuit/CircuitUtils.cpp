@@ -8,7 +8,6 @@
 
 #include "Random.hpp"
 
-
 bool qargs_unique(const Qubits& qubits) {
   std::unordered_set<uint32_t> unique;
   for (auto const &q : qubits) {

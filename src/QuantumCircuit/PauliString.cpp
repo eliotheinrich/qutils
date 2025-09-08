@@ -494,7 +494,7 @@ void PauliString::evolve(const QuantumCircuit& qc) {
     throw std::runtime_error(fmt::format("Cannot evolve a Paulistring with {} qubits with a QuantumCircuit with {} qubits.", num_qubits, qc.get_num_qubits()));
   }
 
-  for (auto const &inst : qc.instructions) {
+  for (auto const &cinst : qc.instructions) {
     std::visit(quantumcircuit_utils::overloaded{
       [this](std::shared_ptr<Gate> gate) { 
         std::string name = gate->label();
@@ -536,7 +536,6 @@ void PauliString::evolve(const QuantumCircuit& qc) {
         }
       },
       [](const FreeFermionGate& gate) {
-        // TODO detect when fermionic gate is Clifford?
         throw std::runtime_error("Cannot evolve arbitrary fermionic gate on PauliString.");
       },
       [](const Measurement& m) { 
@@ -545,7 +544,7 @@ void PauliString::evolve(const QuantumCircuit& qc) {
       [](const WeakMeasurement& m) { 
         throw std::runtime_error("Cannot do weak measurement on a single PauliString.");
       },
-    }, inst);
+    }, cinst.inst);
   }
 }
 

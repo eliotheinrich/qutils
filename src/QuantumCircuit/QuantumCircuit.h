@@ -12,35 +12,44 @@
 
 // --- Definitions for QuantumCircuit --- //
 
-using CircuitDAG = DirectedGraph<Instruction>;
+using CircuitDAG = DirectedGraph<ConditionedInstruction>;
 
 class QuantumCircuit {
   private:
     uint32_t num_qubits;
+    uint32_t num_cbits;
 
   public:
-    std::vector<Instruction> instructions;
+    std::vector<ConditionedInstruction> instructions;
 
-    QuantumCircuit() : num_qubits(0) {}
+    QuantumCircuit() : num_qubits(0), num_cbits(0) {}
 
-    QuantumCircuit(uint32_t num_qubits) : num_qubits(num_qubits) {}
+    QuantumCircuit(uint32_t num_qubits, uint32_t num_cbits=0) : num_qubits(num_qubits), num_cbits(num_cbits) {}
 
-    QuantumCircuit(const QuantumCircuit& qc) : num_qubits(qc.num_qubits) { 
+    QuantumCircuit(const QuantumCircuit& qc) : num_qubits(qc.num_qubits), num_cbits(qc.num_cbits) { 
       append(qc); 
     };
 
     CircuitDAG to_dag() const;
-    static QuantumCircuit to_circuit(const CircuitDAG& dag, uint32_t num_qubits, bool ltr);
-    static QuantumCircuit to_circuit_left_to_right(const CircuitDAG& dag, uint32_t num_qubits);
-    static QuantumCircuit to_circuit_right_to_left(const CircuitDAG& dag, uint32_t num_qubits);
+    static QuantumCircuit to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, bool ltr);
+    static QuantumCircuit to_circuit_left_to_right(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits);
+    static QuantumCircuit to_circuit_right_to_left(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits);
     QuantumCircuit simplify(bool ltr) const;
 
     uint32_t get_num_qubits() const {
       return num_qubits;
     }
 
-    void resize(uint32_t num_qubits) {
+    uint32_t get_num_cbits() const {
+      return num_cbits;
+    }
+
+    void resize_qubits(uint32_t num_qubits) {
       this->num_qubits = num_qubits;
+    }
+
+    void resize_cbits(uint32_t num_cbits) {
+      this->num_cbits = num_cbits;
     }
 
     std::string to_string() const;
@@ -78,35 +87,41 @@ class QuantumCircuit {
     }
 
     void apply_qubit_map(const Qubits& qubits);
+    void apply_cbit_map(const Qubits& bits);
 
     Qubits get_support() const;
 
-    void validate_instruction(const Instruction& inst) const;
+    void validate_instruction(const ConditionedInstruction& inst) const;
 
-    void add_instruction(const Instruction& inst);
-    void add_measurement(const Measurement& m);
-    void add_measurement(const Qubits& qubits, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt) {
+    void add_instruction(const ConditionedInstruction& inst);
+    void add_instruction(const Instruction& inst, ControlOpt control=std::nullopt, TargetOpt target=std::nullopt) {
+      add_instruction({inst, control, target});
+    }
+    void add_measurement(const Measurement& m, TargetOpt target=std::nullopt);
+    void add_measurement(const Qubits& qubits, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt, TargetOpt target=std::nullopt) {
       Measurement m(qubits, pauli, outcome);
-      add_measurement(m);
+      add_measurement(m, target);
     }
 
-    void mzr(uint32_t q) { 
-      add_measurement({q}); 
+    void mzr(uint32_t q, TargetOpt target=std::nullopt) { 
+      Measurement m({q}, std::nullopt, std::nullopt);
+      add_measurement(m, target); 
     }
-    void add_weak_measurement(const WeakMeasurement& m);
-    void add_weak_measurement(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt) {
+    void add_weak_measurement(const WeakMeasurement& m, TargetOpt target=std::nullopt);
+    void add_weak_measurement(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt, TargetOpt target=std::nullopt) {
       WeakMeasurement m(qubits, beta, pauli, outcome);
-      add_weak_measurement(m);
+      add_weak_measurement(m, target);
     }
-    void wmzr(uint32_t q, double beta) { 
-      add_weak_measurement({q}, beta); 
+    void wmzr(uint32_t q, double beta, TargetOpt target=std::nullopt) { 
+      WeakMeasurement m({q}, beta, std::nullopt, std::nullopt);
+      add_weak_measurement(m, target); 
     }
 
-    void add_gate(const FreeFermionGate& gate);
-    void add_gate(const std::string& name, const Qubits& qubits);
-    void add_gate(const std::shared_ptr<Gate> &gate);
-    void add_gate(const Eigen::MatrixXcd& gate, const Qubits& qubits);
-    void add_gate(const Eigen::Matrix2cd& gate, uint32_t qubit);
+    void add_gate(const FreeFermionGate& gate, ControlOpt control=std::nullopt);
+    void add_gate(const std::string& name, const Qubits& qubits, ControlOpt control=std::nullopt);
+    void add_gate(const std::shared_ptr<Gate> &gate, ControlOpt control=std::nullopt);
+    void add_gate(const Eigen::MatrixXcd& gate, const Qubits& qubits, ControlOpt control=std::nullopt);
+    void add_gate(const Eigen::Matrix2cd& gate, uint32_t qubit, ControlOpt control=std::nullopt);
 
     void h(uint32_t q) {
       add_gate("h", {q});
@@ -181,12 +196,12 @@ class QuantumCircuit {
     }
 
     template <typename GateType, typename...Args>
-    void add_gate(const Qubits& qubits, std::optional<std::vector<double>> theta_opt = std::nullopt, const Args&... args) {
+    void add_gate(const Qubits& qubits, std::optional<std::vector<double>> theta_opt=std::nullopt, ControlOpt control=std::nullopt, const Args&... args) {
       if (theta_opt) {
         GateType gate(qubits, args...);
-        add_gate(std::make_shared<MatrixGate>(gate.define(theta_opt.value()), qubits, gate.label()));
+        add_gate(std::make_shared<MatrixGate>(gate.define(theta_opt.value()), qubits, gate.label()), control);
       } else {
-        add_gate(std::make_shared<GateType>(qubits, args...));
+        add_gate(std::make_shared<GateType>(qubits, args...), control);
       }
     }
 
@@ -198,39 +213,39 @@ class QuantumCircuit {
       }
     }
 
-    void rx(uint32_t q, std::optional<double> theta_opt=std::nullopt) {
-      add_gate<RxRotationGate>({q}, to_vector(theta_opt));
+    void rx(uint32_t q, std::optional<double> theta_opt=std::nullopt, ControlOpt control=std::nullopt) {
+      add_gate<RxRotationGate>({q}, to_vector(theta_opt), control);
     }
 
-    void ry(uint32_t q, std::optional<double> theta_opt=std::nullopt) {
-      add_gate<RyRotationGate>({q}, to_vector(theta_opt));
+    void ry(uint32_t q, std::optional<double> theta_opt=std::nullopt, ControlOpt control=std::nullopt) {
+      add_gate<RyRotationGate>({q}, to_vector(theta_opt), control);
     }
 
-    void rz(uint32_t q, std::optional<double> theta_opt=std::nullopt) {
-      add_gate<RzRotationGate>({q}, to_vector(theta_opt));
+    void rz(uint32_t q, std::optional<double> theta_opt=std::nullopt, ControlOpt control=std::nullopt) {
+      add_gate<RzRotationGate>({q}, to_vector(theta_opt), control);
     }
 
-    void rp(const Qubits& qubits, const PauliString& pauli, std::optional<double> theta_opt=std::nullopt) {
-      add_gate<PauliRotationGate>(qubits, to_vector(theta_opt), pauli);
+    void rp(const Qubits& qubits, const PauliString& pauli, std::optional<double> theta_opt=std::nullopt, ControlOpt control=std::nullopt) {
+      add_gate<PauliRotationGate>(qubits, to_vector(theta_opt), control, pauli);
     }
 
     void random_clifford(const Qubits& qubits);
 
     void append(const QuantumCircuit& other);
     void append(const QuantumCircuit& other, const Qubits& qubits);
-    void append(const Instruction& inst);
+    void append(const Instruction& inst, ControlOpt control=std::nullopt);
 
     QuantumCircuit bind_params(const std::vector<double>& params) const;
     size_t get_num_measurements() const;
     void set_measurement_outcomes(const std::vector<bool>& outcomes);
 
-    QuantumCircuit adjoint(const std::optional<std::vector<double>>& params_opt = std::nullopt) const;
+    QuantumCircuit adjoint(const std::optional<std::vector<double>>& params_opt=std::nullopt) const;
     QuantumCircuit reverse() const;
     QuantumCircuit conjugate(const QuantumCircuit& other) const;
 
     std::vector<QuantumCircuit> split_into_unitary_components() const;
 
-    Eigen::MatrixXcd to_matrix(const std::optional<std::vector<double>>& params_opt = std::nullopt) const;
+    Eigen::MatrixXcd to_matrix(const std::optional<std::vector<double>>& params_opt=std::nullopt) const;
 };
 
 template <>

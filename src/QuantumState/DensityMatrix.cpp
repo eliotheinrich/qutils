@@ -103,7 +103,6 @@ DensityMatrix DensityMatrix::partial_trace_density_matrix(const Qubits& qubits) 
 	return reduced_rho;
 }
 
-// TODO make sure that this is a move
 std::shared_ptr<QuantumState> DensityMatrix::partial_trace(const Qubits& qubits) const {
   return std::make_shared<DensityMatrix>(std::move(partial_trace_density_matrix(qubits)));
 }
@@ -141,7 +140,6 @@ double DensityMatrix::entanglement(const QubitSupport& support, uint32_t index) 
 
 	if (index == 0) {
 		uint32_t rank = 0;
-		// TODO cleanup
 		for (auto const &e : rho_a.data.eigenvalues()) {
 			if (std::abs(e) > QS_ATOL) {
 				rank++;

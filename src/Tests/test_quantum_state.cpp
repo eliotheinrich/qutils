@@ -1355,6 +1355,8 @@ bool apply_circuit_check_error(const QuantumCircuit& qc, StateType& state, bool 
   return found_error == should_error;
 }
 
+#include <fmt/ranges.h>
+
 bool test_forced_measurement() {
   constexpr size_t nqb = 4;
 
@@ -1372,6 +1374,7 @@ bool test_forced_measurement() {
 
     QuantumCircuit qc(nqb);
     qc.add_measurement(qubits, P, outcome);
+
     ASSERT(apply_circuit_check_error(qc, psi, false));
     ASSERT(apply_circuit_check_error(qc, rho, false));
     ASSERT(apply_circuit_check_error(qc, mps, false));

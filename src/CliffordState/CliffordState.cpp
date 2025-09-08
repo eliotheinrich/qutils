@@ -1,31 +1,44 @@
 #include "CliffordState.h"
 #include <algorithm>
 
-EvolveResult CliffordState::evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts) {
-  if (qubits.size() != qc.get_num_qubits()) {
+EvolveResult CliffordState::evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
+  if (qubits.size() != circuit.get_num_qubits()) {
     throw std::runtime_error("Provided qubits do not match size of circuit.");
   }
 
-  QuantumCircuit qc_mapped(qc);
-  qc_mapped.resize(num_qubits);
-  qc_mapped.apply_qubit_map(qubits);
+  QuantumCircuit circuit_mapped(circuit);
+  circuit_mapped.resize_qubits(num_qubits);
+  circuit_mapped.apply_qubit_map(qubits);
 
-  return evolve(qc_mapped);
+  return evolve(circuit_mapped);
 }
 
-EvolveResult CliffordState::evolve(const QuantumCircuit& qc, EvolveOpts opts) {
-  if (!qc.is_clifford()) {
+EvolveResult CliffordState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) {
+  if (!circuit.is_clifford()) {
     throw std::runtime_error("Provided circuit is not Clifford.");
   }
 
+  if (circuit.num_params() > 0) {
+    throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve Statevector.");
+  }
+
+  BitString bits(circuit.get_num_cbits());
+
   std::vector<MeasurementData> measurements;
-  for (auto const &inst : qc.instructions) {
-    auto result = evolve(inst);
+  for (auto const &cinst : circuit.instructions) {
+    if (!cinst.should_execute(bits)) {
+      continue;
+    }
+
+    auto result = evolve(cinst.inst);
     if (result) {
       measurements.push_back(result.value());
+      if (cinst.target) {
+        bits.set(cinst.target.value(), result->first);
+      }
     }
-  }
-  
+  }  
+
   return process_measurement_results(measurements, opts);
 }
 

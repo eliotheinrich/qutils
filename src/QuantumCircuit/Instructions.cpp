@@ -584,8 +584,8 @@ Eigen::MatrixXcd FreeFermionGate::to_hamiltonian() const {
   return Hm;
 }
 
-Instruction copy_instruction(const Instruction& inst) {
-  return std::visit(quantumcircuit_utils::overloaded {
+ConditionedInstruction copy_instruction(const ConditionedInstruction& cinst) {
+  Instruction inst = std::visit(quantumcircuit_utils::overloaded {
     [](std::shared_ptr<Gate> gate) {
       return Instruction(gate->clone());
     },
@@ -597,6 +597,26 @@ Instruction copy_instruction(const Instruction& inst) {
     },
     [](const WeakMeasurement& m) {
       return Instruction(m);
+    }
+  }, cinst.inst);
+
+  // TODO avoid copy of inst
+  return ConditionedInstruction(inst, cinst.control, cinst.target);
+}
+
+ConditionedInstruction ConditionedInstruction::adjoint() const {
+  return std::visit(quantumcircuit_utils::overloaded {
+    [this](std::shared_ptr<Gate> gate) -> ConditionedInstruction {
+      return {gate->adjoint(), control, target};
+    },
+    [this](const FreeFermionGate& gate) -> ConditionedInstruction {
+      return {gate.adjoint(), control, target};
+    },
+    [](const Measurement& m) -> ConditionedInstruction {
+      throw std::runtime_error("Cannot return adjoint of non-unitary operations.");
+    },
+    [](const WeakMeasurement& m) -> ConditionedInstruction {
+      throw std::runtime_error("Cannot return adjoint of non-unitary operations.");
     }
   }, inst);
 }
@@ -685,7 +705,7 @@ bool WeakMeasurement::get_outcome() const {
   return outcome.value();
 }
 
-Qubits get_instruction_support(const Instruction& inst) {
+Qubits get_instruction_support(const ConditionedInstruction& cinst) {
 	return std::visit(quantumcircuit_utils::overloaded {
     [](const std::shared_ptr<Gate> gate) { 
       return gate->qubits;
@@ -699,14 +719,27 @@ Qubits get_instruction_support(const Instruction& inst) {
     [](const WeakMeasurement& m) {
       return m.qubits;
     }
-  }, inst);
+  }, cinst.inst);
 }
 
-bool instruction_is_unitary(const Instruction& inst) {
+Qubits get_instruction_classical_support(const ConditionedInstruction& cinst) {
+  Qubits support;
+  if (cinst.control) {
+    support.push_back(cinst.control.value());
+  }
+
+  if (cinst.target) {
+    support.push_back(cinst.target.value());
+  }
+
+  return support;
+};
+
+bool instruction_is_unitary(const ConditionedInstruction& cinst) {
   return std::visit(quantumcircuit_utils::overloaded {
     [](std::shared_ptr<Gate> gate) { return true; },
     [](const FreeFermionGate& gate) { return true; },
     [](const Measurement& m) { return false; },
     [](const WeakMeasurement& m) { return false; }
-  }, inst);
+  }, cinst.inst);
 }

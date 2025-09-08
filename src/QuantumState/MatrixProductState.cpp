@@ -366,7 +366,6 @@ class MatrixProductStateImpl {
           U.replaceTags(linkIndex(mps, i).tags(), tags(vidal_mps.internal_idx(i)));
         }
 
-        // TODO check
         vidal_mps.tensors[i-1] = U * S;
 
         vidal_mps.external_indices[i-1] = findInds(U, "External")[0];
@@ -1029,6 +1028,7 @@ class MatrixProductStateImpl {
 
         double t = std::sqrt(P*std::pow(2.0, num_qubits));
         std::vector<double> amplitudes{t};
+
         // TODO make this more efficient with partial contractions
         for (const auto& support : supports) {
           PauliString ps = pauli.substring(support, false);
@@ -1645,7 +1645,6 @@ class MatrixProductStateImpl {
         new_impl.internal_indices[i] = internal_indices[i];
       }
 
-      // TODO FIX THIS
       Index internal = right_boundary_index;
       Index internal_ = Index(1, fmt::format("Internal,n={}",num_qubits));
       new_impl.tensors[num_qubits - 1].replaceInds({internal}, {internal_});

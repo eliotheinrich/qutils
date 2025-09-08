@@ -481,6 +481,26 @@ struct WeakMeasurement {
 
 using Instruction = std::variant<std::shared_ptr<Gate>, FreeFermionGate, Measurement, WeakMeasurement>;
 
+using TargetOpt = std::optional<uint32_t>;
+using ControlOpt = std::optional<uint32_t>;
+
+struct ConditionedInstruction {
+  ConditionedInstruction()=default;
+  ConditionedInstruction(const Instruction& inst) : inst(inst) { }
+  ConditionedInstruction(const Instruction& inst, ControlOpt control, TargetOpt target)
+    : inst(inst), target(target), control(control) { }
+
+  Instruction inst;
+  ControlOpt control;
+  TargetOpt target;
+
+  ConditionedInstruction adjoint() const;
+  bool should_execute(const BitString& bits) const {
+    return control ? bits.get(control.value()) : true;
+  }
+};
+
+
 template <>
 struct fmt::formatter<Instruction> {
   template <typename ParseContext>
@@ -539,8 +559,32 @@ struct fmt::formatter<Instruction> {
   }
 };
 
-Instruction copy_instruction(const Instruction& inst);
+template <>
+struct fmt::formatter<ConditionedInstruction> {
+  template <typename ParseContext>
+  constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
 
-Qubits get_instruction_support(const Instruction& inst);
+  template <typename FormatContext>
+  auto format(const ConditionedInstruction& inst, FormatContext& ctx) const {
+    auto inst_to_string = [](const ConditionedInstruction& cinst) {
+      std::string s = fmt::format("{}", cinst.inst);
+      if (cinst.control) {
+        s += fmt::format(" c-{}", cinst.control.value());
+      }
 
-bool instruction_is_unitary(const Instruction& inst);
+      if (cinst.target) {
+        s += fmt::format(" t-{}", cinst.target.value());
+      }
+		  return s;
+    };
+
+    return fmt::format_to(ctx.out(), "{}", inst_to_string(inst));
+  }
+};
+
+ConditionedInstruction copy_instruction(const ConditionedInstruction& cinst);
+
+Qubits get_instruction_support(const ConditionedInstruction& cinst);
+Qubits get_instruction_classical_support(const ConditionedInstruction& cinst);
+
+bool instruction_is_unitary(const ConditionedInstruction& cinst);
