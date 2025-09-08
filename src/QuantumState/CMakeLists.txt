@@ -19,10 +19,10 @@ find_library(ITENSOR
 set(MKL_INTERFACE_FULL "intel_lp64")
 find_package(MKL CONFIG)
 if (${MKL_FOUND})
-    set(ITENSOR_DEPS MKL::MKL ${ITENSOR})
+    set(ITENSOR_DEPS gfortran MKL::MKL ${ITENSOR})
 else()
     find_package(OpenBLAS CONFIG REQUIRED)
-    set(ITENSOR_DEPS ${ITENSOR} ${OpenBLAS_LIBRARIES})
+    set(ITENSOR_DEPS gfortran ${ITENSOR} ${OpenBLAS_LIBRARIES})
 endif()
 
 target_link_libraries(quantum_state 

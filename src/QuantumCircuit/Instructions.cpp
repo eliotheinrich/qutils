@@ -459,15 +459,6 @@ std::string FreeFermionGate::label() const {
   return fmt::format("MG{}", suffix);
 }
 
-std::string FreeFermionGate::to_string() const {
-  std::string s = "terms:\n";
-  for (const auto& term : terms) {
-    s += fmt::format("({}, {}): {:.5f}\n", term.i, term.j, term.a);
-  }
-
-  return s;
-}
-
 FreeFermionGate FreeFermionGate::bind_params(const std::vector<double>& params) const {
   if (params.size() != 1) {
     throw std::runtime_error("Must provide exactly one parameter to FreeFermionGate.");
@@ -582,6 +573,19 @@ Eigen::MatrixXcd FreeFermionGate::to_hamiltonian() const {
         B.adjoint(), -A.transpose();
 
   return Hm;
+}
+
+std::string FreeFermionGate::to_string() const {
+  if (terms.size() == 0) {
+    return "";
+  }
+
+  std::vector<std::string> s;
+  for (const auto& term : terms) {
+    s.push_back(fmt::format("{:.3f} c_{}{} c_{}", term.a, term.i, term.adj ? "^dag" : "", term.j));
+  }
+
+  return fmt::format("{} + h.c.", fmt::join(s, " + "));
 }
 
 ConditionedInstruction copy_instruction(const ConditionedInstruction& cinst) {

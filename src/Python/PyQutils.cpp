@@ -185,6 +185,9 @@ NB_MODULE(qutils_bindings, m) {
     .def("add_gate", [](QuantumCircuit& self, const Eigen::MatrixXcd& gate, uint32_t q, ControlOpt control) { 
       self.add_gate(gate, q, control); 
     }, "gate"_a, "qubit"_a, "control"_a=nanobind::none())
+    .def("add_gate", [](QuantumCircuit& self, const FreeFermionGate& gate, ControlOpt control) {
+      self.add_gate(gate, control);
+    }, "gate"_a, "control"_a=nanobind::none())
     .def("append", [](QuantumCircuit& self, const QuantumCircuit& other, const std::optional<Qubits>& qubits) { 
       if (qubits) {
         self.append(other, qubits.value());
@@ -555,7 +558,8 @@ NB_MODULE(qutils_bindings, m) {
       new (gate) FreeFermionGate(num_qubits, t);
     }, "num_qubits"_a, "t"_a=nanobind::none())
     .def(nanobind::init<const FreeFermionGate&>())
-    .def("add_term", &FreeFermionGate::add_term, "i"_a, "j"_a, "a"_a, "adj"_a=true);
+    .def("add_term", &FreeFermionGate::add_term, "i"_a, "j"_a, "a"_a, "adj"_a=true)
+    .def("__str__", &FreeFermionGate::to_string);
 
   nanobind::class_<GaussianState, MagicQuantumState>(m, "GaussianState")
     .def(nanobind::init<uint32_t>())
