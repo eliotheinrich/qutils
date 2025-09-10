@@ -253,11 +253,15 @@ class MatrixProductStateImpl {
       : num_qubits(num_qubits), bond_dimension(bond_dimension), sv_threshold(sv_threshold), left_ortho_lim(0), right_ortho_lim(0),
         debug_level(0), orthogonality_level(1) {
         if (sv_threshold < 1e-15) {
-          throw std::runtime_error("sv_threshold must be finite ( > 0) or else the MPS may be numerically unstable.");
+          throw std::runtime_error("sv_threshold must be finite ( > 1e-15) or else the MPS may be numerically unstable.");
         }
 
         if ((bond_dimension > 1u << num_qubits) && (num_qubits < 32)) {
           bond_dimension = 1u << num_qubits;
+        }
+
+        if (bond_dimension > 1u << 16) {
+          throw std::invalid_argument("Bond dimension is too large. Must be smaller than 2^16.");
         }
 
         if (num_qubits < 1) {
