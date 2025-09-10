@@ -11,10 +11,13 @@
 #include <string_view>
 #include <string>
 
+#include <fmt/format.h>
+
 constexpr uint32_t fnv1a(std::string_view s) {
     uint32_t h = 2166136261u;
-    for (char c : s)
+    for (char c : s) {
         h = (h ^ uint32_t(c)) * 16777619u;
+    }
     return h;
 }
 
@@ -35,8 +38,8 @@ class Logger {
         return instance;
       }
 
-      Logger(const Logger&) = delete;
-      Logger& operator=(const Logger&) = delete;
+      Logger(const Logger&)=delete;
+      Logger& operator=(const Logger&)=delete;
 
       static void log_info(const std::string& message, LogSite site={}) {
         if (get_instance().logging_level >= Logger::logging_info) {
@@ -81,6 +84,7 @@ class Logger {
       static constexpr int logging_errors = 1;
       static constexpr int logging_warnings = 2;
       static constexpr int logging_info = 3;
+      static constexpr int logging_print = 4;
 
       int logging_level;
       std::string log_file_path;
@@ -91,7 +95,7 @@ class Logger {
         const char* filename = std::getenv("QUTILS_LOG_FILE");
 
         std::string level_str = "NONE";
-        if (level != nullptr && filename != nullptr) {
+        if (level != nullptr) {
           level_str = level;
         }
 
@@ -103,22 +107,31 @@ class Logger {
           }
         }
 
-        if (level_str == "NONE" || !log_file.is_open()) {
+        if (level_str == "NONE") {
           logging_level = logging_disabled;
-        } else if (level_str == "ERROR" || level_str == "ERRORS") {
-          logging_level = logging_errors;
-        } else if (level_str == "WARNING" || level_str == "WARNINGS") {
-          logging_level = logging_warnings;
+        } else if (level_str == "PRINT") {
+          logging_level = logging_print;
         } else {
-          logging_level = logging_info;
+          if (!log_file.is_open()) {
+            logging_level = logging_disabled;
+          } else if (level_str == "ERROR" || level_str == "ERRORS") {
+            logging_level = logging_errors;
+          } else if (level_str == "WARNING" || level_str == "WARNINGS") {
+            logging_level = logging_warnings;
+          } else {
+            logging_level = logging_info;
+          }
         }
       }
 
       static void log(Level level, const std::string& message) {
         Logger& instance = get_instance();
 
-        if (instance.log_file.is_open()) {
-          instance.log_file << current_time() << " [" << level_to_string(level) << "] " << message << "\n";
+        std::string message_formatted = fmt::format("{} [{}] {}\n", current_time(), level_to_string(level), message);
+        if (instance.logging_level == logging_print) {
+          std::cout << message_formatted;
+        } else if (instance.log_file.is_open()) {
+          instance.log_file << message_formatted;
         }
       }
 

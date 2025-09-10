@@ -1,4 +1,5 @@
 #include "GaussianState.h"
+#include "Logger.hpp"
 
 #include <sstream>
 #include <iostream>
@@ -242,7 +243,7 @@ Eigen::MatrixXcd GaussianState::covariance_matrix() const {
   return amplitudes * amplitudes.adjoint();
 }
 
-Eigen::MatrixXcd GaussianState::majorana_covariance_matrix() const {
+Eigen::MatrixXd GaussianState::majorana_covariance_matrix() const {
   Eigen::MatrixXcd U = Eigen::MatrixXcd::Zero(2*num_qubits, 2*num_qubits);
   for (size_t i = 0; i < num_qubits; i++) {
     U(2*i,   i)              = 1.0;
@@ -252,7 +253,7 @@ Eigen::MatrixXcd GaussianState::majorana_covariance_matrix() const {
   }
 
   Eigen::MatrixXcd C = covariance_matrix();
-  return gates::i*(U * C * U.adjoint() - Eigen::MatrixXcd::Identity(2*num_qubits, 2*num_qubits));
+  return -(U * C * U.adjoint() - Eigen::MatrixXcd::Identity(2*num_qubits, 2*num_qubits)).imag();
 }
 
 std::complex<double> GaussianState::majorana_expectation(const std::vector<uint32_t>& indices) const {
@@ -262,8 +263,8 @@ std::complex<double> GaussianState::majorana_expectation(const std::vector<uint3
 
   size_t p = indices.size() / 2;
 
-  Eigen::MatrixXcd M = majorana_covariance_matrix();
-  Eigen::MatrixXcd Mi = M(indices, indices);
+  Eigen::MatrixXd M = majorana_covariance_matrix();
+  Eigen::MatrixXd Mi = M(indices, indices);
 
   return std::pow(gates::i, -p) * std::abs(std::sqrt(Mi.determinant()));
 }
@@ -436,28 +437,32 @@ std::vector<PauliAmplitudes> GaussianState::sample_paulis(const std::vector<Qubi
     throw not_implemented();
   }
 
-  Eigen::MatrixXcd M = majorana_covariance_matrix();
-  double rho = 1u << num_qubits;
+  // Save these so each sample doesn't need to compute A_inv from scratch
+  Eigen::MatrixXd M = majorana_covariance_matrix();
+  Eigen::MatrixXd A_initial = Eigen::MatrixXd::Identity(2*num_qubits, 2*num_qubits) + M;
+
+  double rho = std::pow(2.0, num_qubits);
 
   std::vector<PauliAmplitudes> samples;
   for (size_t i = 0; i < num_samples; i++) {
     double p = 1.0;
+    Eigen::MatrixXd A = A_initial;
     std::vector<uint32_t> included_indices;
 
-    Eigen::MatrixXcd Id = Eigen::MatrixXcd::Identity(2*num_qubits, 2*num_qubits);
     for (size_t q = 0; q < 2*num_qubits; q++) {
-      Id(q, q) = 0;
+      A(q, q) -= 1;
 
       std::vector<uint32_t> idxs = included_indices;
       for (size_t k = q+1; k < 2*num_qubits; k++) {
         idxs.push_back(k);
       }
 
-      Eigen::MatrixXcd Mi = (Id + M)(idxs, idxs);
+      Eigen::MatrixXd Mi = A(idxs, idxs);
+      Eigen::PartialPivLU<Eigen::MatrixXd> lu(Mi);
 
       // Probability that x_mu = 0
-      double pq = std::abs(Mi.determinant())/rho/p;
-
+      double det = std::abs(lu.determinant());
+      double pq = det/rho/p;
       if (randf() < pq) {
         p *= pq;
       } else {
@@ -474,6 +479,7 @@ std::vector<PauliAmplitudes> GaussianState::sample_paulis(const std::vector<Qubi
 
   return samples;
 }
+
 
 #include <glaze/glaze.hpp>
 

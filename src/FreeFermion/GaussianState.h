@@ -46,7 +46,7 @@ class GaussianState : public MagicQuantumState {
     double num_real_particles() const;
 
     Eigen::MatrixXcd covariance_matrix() const;
-    Eigen::MatrixXcd majorana_covariance_matrix() const;
+    Eigen::MatrixXd majorana_covariance_matrix() const;
     std::complex<double> majorana_expectation(const std::vector<uint32_t>& indices) const;
 
     double occupation(size_t i) const;
