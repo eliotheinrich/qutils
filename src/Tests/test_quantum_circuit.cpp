@@ -331,6 +331,31 @@ bool test_simplify_cbits() {
   return true;
 }
 
+bool test_simplify_deep() {
+  constexpr size_t nqb = 2;
+
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc(nqb);
+    size_t length = randi(10, 200);
+    for (size_t d = 0; d < length; d++) {
+      if (randf() < 0.5) {
+        qc.add_gate(haar_unitary(1), Qubits{(randi() % 2)});
+      } else {
+        qc.add_gate(haar_unitary(2), Qubits{0, 1});
+      }
+    }
+
+    size_t length1 = qc.length();
+    QuantumCircuit simple = qc.simplify(true);
+    size_t length2 = simple.length();
+
+    ASSERT(length1 == length);
+    ASSERT(length2 == 1);
+  }
+  
+  return true;
+}
+
 double objective(const std::vector<double>& params) {
   return std::pow(params[0] - 3.0, 2);
 }
@@ -392,6 +417,7 @@ int main(int argc, char *argv[]) {
   //ADD_TEST(test_random_conditioned_operation);
   ADD_TEST(test_adam);
   ADD_TEST(test_simplify_cbits);
+  ADD_TEST(test_simplify_deep);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";
