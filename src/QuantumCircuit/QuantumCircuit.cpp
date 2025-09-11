@@ -156,15 +156,15 @@ DirectedGraph<int> make_reversed_dag(const CircuitDAG& dag) {
   return reversed_dag;
 }
 
-QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, bool ltr) {
+QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map, bool ltr) {
   if (ltr) {
-    return to_circuit_left_to_right(dag, num_qubits, num_cbits);
+    return to_circuit_left_to_right(dag, num_qubits, num_cbits, measurement_map);
   } else {
-    return to_circuit_right_to_left(dag, num_qubits, num_cbits);
+    return to_circuit_right_to_left(dag, num_qubits, num_cbits, measurement_map);
   }
 }
 
-QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits) {
+QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map) {
   auto reversed_dag = make_reversed_dag(dag);
 
   // Hold a pair of the DAG index and the leftmost qubit
@@ -178,13 +178,17 @@ QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, u
   }
 
   QuantumCircuit circuit(num_qubits, num_cbits);
+  size_t num_measurements = measurement_map.size();
+  std::vector<size_t> new_measurement_map(num_measurements);;
+  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);;
+
   size_t i = 0;
   int pos = 0;
   std::set<size_t> visited;
-  bool first = true;
+  size_t n = 0;
   while (!leafs.empty()) {
     auto it = leafs.begin();
-    if (!first) {
+    if (n == 0) {
       TreeEntry key = {SIZE_MAX, pos};
       auto it = leafs.lower_bound(key);
 
@@ -207,12 +211,15 @@ QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, u
       }
     }
 
-    first = false;
-
     std::tie(i, pos) = *it;
 
     visited.insert(i);
     circuit.add_instruction(copy_instruction(dag.get_val(i)));
+
+    if (reversed_map.contains(i)) {
+      size_t arg = reversed_map[i];
+      new_measurement_map[arg] = n; 
+    }
 
     std::set<size_t> new_leafs;
     for (size_t j : dag.edges_of(i)) {
@@ -236,12 +243,15 @@ QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, u
       uint32_t q = std::ranges::min(get_instruction_support(cinst));
       leafs.emplace(j, q);
     }
+
+    n++;
   }
 
+  circuit.measurement_map = new_measurement_map;
   return circuit;
 }
 
-QuantumCircuit QuantumCircuit::to_circuit_right_to_left(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits) {
+QuantumCircuit QuantumCircuit::to_circuit_right_to_left(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map) {
   auto reversed_dag = make_reversed_dag(dag);
 
   // Hold a pair of the DAG index and the leftmost qubit
@@ -255,13 +265,17 @@ QuantumCircuit QuantumCircuit::to_circuit_right_to_left(const CircuitDAG& dag, u
   }
 
   QuantumCircuit circuit(num_qubits, num_cbits);
+  size_t num_measurements = measurement_map.size();
+  std::vector<size_t> new_measurement_map(num_measurements);;
+  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);;
+
   size_t i = 0;
   int pos = num_qubits;
   std::set<size_t> visited;
-  bool first = true;
+  size_t n = 0;
   while (!leafs.empty()) {
     auto it = leafs.begin();
-    if (!first) {
+    if (n == 0) {
       TreeEntry key = {SIZE_MAX, pos};
       auto it = leafs.upper_bound(key);
 
@@ -284,12 +298,15 @@ QuantumCircuit QuantumCircuit::to_circuit_right_to_left(const CircuitDAG& dag, u
       }
     }
 
-    first = false;
-
     std::tie(i, pos) = *it;
 
     visited.insert(i);
     circuit.add_instruction(copy_instruction(dag.get_val(i)));
+
+    if (reversed_map.contains(i)) {
+      size_t arg = reversed_map[i];
+      new_measurement_map[arg] = n; 
+    }
 
     std::set<size_t> new_leafs;
     for (size_t j : dag.edges_of(i)) {
@@ -313,7 +330,11 @@ QuantumCircuit QuantumCircuit::to_circuit_right_to_left(const CircuitDAG& dag, u
       uint32_t q = std::ranges::max(get_instruction_support(cinst));
       leafs.emplace(j, q);
     }
+
+    n++;
   }
+
+  circuit.measurement_map = new_measurement_map;
 
   return circuit;
 }
@@ -400,8 +421,7 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
     reversed_dag.remove_vertex(j);
   }
 
-  QuantumCircuit circuit = to_circuit(dag, num_qubits, num_cbits, ltr);
-  return circuit;
+  return to_circuit(dag, num_qubits, num_cbits, measurement_map, ltr);
 }
 
 void QuantumCircuit::apply_qubit_map(const Qubits& qubits) {
@@ -501,6 +521,9 @@ void QuantumCircuit::validate_instruction(const ConditionedInstruction& cinst) c
 
 void QuantumCircuit::add_instruction(const ConditionedInstruction& cinst) {
   validate_instruction(cinst);
+  if (!instruction_is_unitary(cinst)) {
+    measurement_map.push_back(length());
+  }
   instructions.push_back(cinst);
 }
 
@@ -610,33 +633,31 @@ QuantumCircuit QuantumCircuit::bind_params(const std::vector<double>& params) co
 }
 
 size_t QuantumCircuit::get_num_measurements() const {
-  size_t n = 0;
-  for (auto const& inst : instructions) {
-		std::visit(quantumcircuit_utils::overloaded {
-      [](std::shared_ptr<Gate> gate) { },
-      [](const FreeFermionGate& gate) { },
-      [&](const Measurement& m) { n++; },
-      [&](const WeakMeasurement& m) { n++; }
-    }, inst.inst);
-  }
-
-  return n;
+  return measurement_map.size();
 }
 
-void QuantumCircuit::set_measurement_outcomes(const std::vector<bool>& outcomes) {
+void QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>& outcomes) {
   size_t num_measurements = get_num_measurements();
   if (outcomes.size() != num_measurements) {
     throw std::runtime_error(fmt::format("Passed {} measurement outcomes to a circuit with {} measurements.", outcomes.size(), num_measurements));
   }
 
-  size_t n = 0;
-  for (auto& inst : instructions) {
-		std::visit(quantumcircuit_utils::overloaded {
-      [](std::shared_ptr<Gate> gate) { },
-      [](const FreeFermionGate& gate) { },
-      [&](Measurement& m) { m.outcome = outcomes[n++]; },
-      [&](WeakMeasurement& m) { m.outcome = outcomes[n++]; }
-    }, inst.inst);
+  for (size_t i = 0; i < num_measurements; i++) {
+    size_t idx = measurement_map[i];
+    std::visit(quantumcircuit_utils::overloaded {
+      [](std::shared_ptr<Gate> gate) { 
+        throw std::runtime_error("Circuit measurement map is in a bad state. This is a bug.");
+      },
+      [](const FreeFermionGate& gate) {
+        throw std::runtime_error("Circuit measurement map is in a bad state. This is a bug.");
+      },
+      [&](Measurement& m) { 
+        m.outcome = outcomes[i]; 
+      },
+      [&](WeakMeasurement& m) { 
+        m.outcome = outcomes[i]; 
+      }
+    }, instructions[idx].inst);
   }
 }
 

@@ -169,6 +169,7 @@ NB_MODULE(qutils_bindings, m) {
     .def("__str__", &QuantumCircuit::to_string)
     .def("num_params", &QuantumCircuit::num_params)
     .def("bind_params", &QuantumCircuit::bind_params)
+    .def("bind_measurement_outcomes", &QuantumCircuit::bind_measurement_outcomes)
     .def("length", &QuantumCircuit::length)
     .def("mzr", [](QuantumCircuit& self, uint32_t q, TargetOpt target) { 
       self.mzr(q, target);

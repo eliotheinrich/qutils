@@ -667,7 +667,7 @@ bool Measurement::get_outcome() const {
 }
 
 WeakMeasurement::WeakMeasurement(const Qubits& qubits, double beta, std::optional<PauliString> pauli, std::optional<bool> outcome)
-: qubits(qubits), beta(beta), pauli(pauli), outcome(outcome) {
+  : qubits(qubits), beta(beta), pauli(pauli), outcome(outcome) {
   PauliString p = pauli ? pauli.value() : PauliString("+Z");
   if (qubits.size() != p.num_qubits) {
     throw std::runtime_error(fmt::format("Invalid number of qubits {} passed to weak measurement of pauli {}.", qubits, pauli.value()));
@@ -737,7 +737,7 @@ Qubits get_instruction_classical_support(const ConditionedInstruction& cinst) {
   }
 
   return support;
-};
+}
 
 bool instruction_is_unitary(const ConditionedInstruction& cinst) {
   return std::visit(quantumcircuit_utils::overloaded {

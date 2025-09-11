@@ -258,15 +258,24 @@ EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts
 
   BitString bits(circuit.get_num_cbits());
 
-  std::vector<MeasurementData> measurements;
-  for (auto const &cinst : circuit.instructions) {
+  // Preparing reversed measurement_map
+  size_t num_measurements = circuit.get_num_measurements();
+  std::vector<MeasurementData> measurements(num_measurements);
+  std::map<size_t, size_t> reversed_map;
+  std::vector<size_t> measurement_map = circuit.get_measurement_map();
+  for (size_t i = 0; i < num_measurements; i++) {
+    reversed_map[measurement_map[i]] = i;
+  }
+
+  for (size_t i = 0; i < circuit.length(); i++) {
+    const auto& cinst = circuit.instructions[i];
     if (!cinst.should_execute(bits)) {
       continue;
     }
 
     auto result = evolve(cinst.inst);
     if (result) {
-      measurements.push_back(result.value());
+      measurements[reversed_map.at(i)] = result.value();
       if (cinst.target) {
         bits.set(cinst.target.value(), result->first);
       }

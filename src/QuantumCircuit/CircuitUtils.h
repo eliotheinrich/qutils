@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <optional>
 #include <utility>
 #include <random>
@@ -11,6 +12,16 @@
 namespace quantumcircuit_utils {
   template<class... Ts> struct overloaded : Ts... { using Ts::operator()...; };
   template<class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
+}
+
+template <typename T>
+std::map<T, size_t> reverse_map(const std::vector<T>& vec) {
+  std::map<T, size_t> reversed_map;
+  for (size_t i = 0; i < vec.size(); i++) {
+    reversed_map[vec[i]] = i;
+  }
+
+  return reversed_map;
 }
 
 bool qargs_unique(const Qubits& qubits);

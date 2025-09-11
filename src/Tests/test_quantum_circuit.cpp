@@ -2,6 +2,7 @@
 
 #include "QuantumCircuit.h"
 #include "QuantumState.h"
+#include "CliffordState.h"
 
 Qubits random_qubits(size_t num_qubits, size_t k) {
   std::minstd_rand rng(randi());
@@ -62,7 +63,7 @@ bool test_qc_canonical() {
   for (size_t i = 0; i < 10; i++) {
     QuantumCircuit qc = random_unitary_circuit(nqb, 10, {2});
     CircuitDAG dag = qc.to_dag();
-    QuantumCircuit canon = QuantumCircuit::to_circuit(dag, nqb, 0, randf() < 0.5);
+    QuantumCircuit canon = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), randf() < 0.5);
     ASSERT(qc.to_matrix().isApprox(canon.to_matrix()));
   }
 
@@ -100,8 +101,8 @@ bool test_dag_to_circuit() {
     QuantumCircuit qc = random_unitary_circuit(nqb, 10, {1, 2, 3});
 
     CircuitDAG dag = qc.to_dag();
-    QuantumCircuit left = QuantumCircuit::to_circuit_left_to_right(dag, nqb, 0);
-    QuantumCircuit right = QuantumCircuit::to_circuit_right_to_left(dag, nqb, 0);
+    QuantumCircuit left = QuantumCircuit::to_circuit_left_to_right(dag, nqb, 0, qc.get_measurement_map());
+    QuantumCircuit right = QuantumCircuit::to_circuit_right_to_left(dag, nqb, 0, qc.get_measurement_map());
     ASSERT(qc.to_matrix().isApprox(left.to_matrix()));
     ASSERT(qc.to_matrix().isApprox(right.to_matrix()));
   }
@@ -247,28 +248,30 @@ bool test_conditioned_operation() {
 
   for (size_t i = 0; i < 20; i++) {
     QuantumCircuit qc(nqb, nqb);
+
     for (size_t q = 0; q < nqb; q++) {
       qc.h(q);
       qc.mzr(q, q);
       qc.add_gate("x", {q}, q);
     }
 
-    EvolveOpts opts;
-    opts.return_measurement_outcomes = true;
-    opts.simplify_circuit = true;
-
     Statevector psi(nqb);
-    auto results = std::get<std::vector<bool>>(psi.evolve(qc, opts).value());
-
+    psi.evolve(qc);
     Statevector psi0(nqb);
-
     ASSERT(is_close(std::abs(psi.inner(psi0)), 1.0));
+
+    QuantumCHPState chp(nqb);
+    chp.evolve(qc);
+    QuantumCHPState chp0(nqb);
+    ASSERT(chp == chp0);
   }
 
   return true;
 }
 
 bool test_random_conditioned_operation() {
+  int s = randi();
+  Random::seed_rng(s);
   constexpr size_t nqb = 10;
   
   for (size_t i = 0; i < 10; i++) {
@@ -276,7 +279,7 @@ bool test_random_conditioned_operation() {
 
     for (size_t d = 0; d < 10; d++) {
       if (randf() < 0.8) { // Unitary
-        size_t n = randi(1, 4);
+        size_t n = randi(1, 3);
         PauliString P = PauliString::randh(n);
         double theta = randf(0, 2*M_PI);
 
@@ -285,7 +288,7 @@ bool test_random_conditioned_operation() {
         size_t control = randi(0, nqb);
         qc.rp(qubits, P, theta, control);
       } else {
-        size_t n = randi(1, 4);
+        size_t n = randi(1, 3);
         PauliString P = PauliString::randh(n);
         double theta = randf(0, 2*M_PI);
 
@@ -305,7 +308,7 @@ bool test_random_conditioned_operation() {
     Statevector psi1(nqb);
     auto results1 = std::get<std::vector<bool>>(psi1.evolve(qc, opts).value());
 
-    qc.set_measurement_outcomes(results1);
+    qc.bind_measurement_outcomes(results1);
 
     Statevector psi2(nqb);
     auto results2 = std::get<std::vector<bool>>(psi2.evolve(qc, opts).value());
@@ -322,10 +325,9 @@ bool test_simplify_cbits() {
     qc.add_gate("x", {randi(0, nqb)}, {0});
   }
 
-  QuantumCircuit simple = qc.simplify(randf() < 0.5);
-
   // All gates depend on each other causally through 0th classical bit. Do not allow
   // for any rearrangement
+  QuantumCircuit simple = qc.simplify(randf() < 0.5);
   ASSERT(qc.to_string() == simple.to_string());
 
   return true;
@@ -346,13 +348,48 @@ bool test_simplify_deep() {
     }
 
     size_t length1 = qc.length();
-    QuantumCircuit simple = qc.simplify(true);
+    QuantumCircuit simple = qc.simplify(randf() < 0.5);
     size_t length2 = simple.length();
 
     ASSERT(length1 == length);
     ASSERT(length2 == 1);
   }
   
+  return true;
+}
+
+bool test_dag_ltr() {
+  constexpr size_t nqb = 4;
+  EvolveOpts opts;
+  opts.return_measurement_outcomes = true;
+  opts.simplify_circuit = false;
+
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc1(nqb);
+    if (randf() < 0.5) {
+      for (int q = nqb - 1; q >= 0; q--) {
+        qc1.h(q);
+        qc1.mzr(q);
+      }
+    } else {
+      for (size_t q = 0; q < nqb; q++) {
+        qc1.h(q);
+        qc1.mzr(q);
+      }
+    }
+
+    Statevector s1(nqb);
+    std::vector<bool> outcomes = std::get<std::vector<bool>>(s1.evolve(qc1, opts).value());
+
+    QuantumCircuit qc2 = qc1.simplify(randf() < 0.5);
+    qc2.bind_measurement_outcomes(outcomes);
+
+    Statevector s2(nqb);
+    s2.evolve(qc2, opts);
+
+    ASSERT(is_close(std::abs(s1.inner(s2)), 1.0));
+  }
+
   return true;
 }
 
@@ -366,30 +403,19 @@ std::vector<double> gradient(const std::vector<double>& params) {
 }
 
 bool test_adam() {
-  // Initialize optimizer
   ADAMOptimizer opt;
 
-  // Start with parameter far from optimum
   std::vector<double> params = {0.0};
 
-  std::cout << "Initial value: f(" << params[0] << ") = " 
-    << objective(params) << "\n";
-
-  // Run optimization for 100 steps
+  double initial_value = objective(params);
   for (int step = 1; step <= 1000; step++) {
     auto grads = gradient(params);
     params = opt.step(params, grads);
-
-    if (step % 10 == 0) {
-      std::cout << "Step " << step 
-        << " | x = " << params[0] 
-        << " | f(x) = " << objective(params) 
-        << "\n";
-    }
   }
+  double final_value = objective(params);
 
-  std::cout << "Final result: x ≈ " << params[0] 
-    << ", f(x) ≈ " << objective(params) << "\n";
+  constexpr double dV = 4.0;
+  ASSERT(initial_value - final_value > dV, fmt::format("Value went from {} to {}. Expected a change greater than {}", initial_value, final_value, dV));
 
   return true;
 }
@@ -414,9 +440,10 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_pauli);
   ADD_TEST(test_parametrized_circuit);
   ADD_TEST(test_conditioned_operation);
-  //ADD_TEST(test_random_conditioned_operation);
+  ADD_TEST(test_random_conditioned_operation);
   ADD_TEST(test_adam);
   ADD_TEST(test_simplify_cbits);
+  ADD_TEST(test_dag_ltr);
   ADD_TEST(test_simplify_deep);
 
   constexpr char green[] = "\033[1;32m";

@@ -21,19 +21,20 @@ class QuantumCircuit {
 
   public:
     std::vector<ConditionedInstruction> instructions;
+    std::vector<size_t> measurement_map;
 
     QuantumCircuit() : num_qubits(0), num_cbits(0) {}
 
     QuantumCircuit(uint32_t num_qubits, uint32_t num_cbits=0) : num_qubits(num_qubits), num_cbits(num_cbits) {}
 
-    QuantumCircuit(const QuantumCircuit& qc) : num_qubits(qc.num_qubits), num_cbits(qc.num_cbits) { 
+    QuantumCircuit(const QuantumCircuit& qc) : num_qubits(qc.num_qubits), num_cbits(qc.num_cbits), measurement_map(qc.measurement_map) { 
       append(qc); 
     };
 
     CircuitDAG to_dag() const;
-    static QuantumCircuit to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, bool ltr);
-    static QuantumCircuit to_circuit_left_to_right(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits);
-    static QuantumCircuit to_circuit_right_to_left(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits);
+    static QuantumCircuit to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map, bool ltr=true);
+    static QuantumCircuit to_circuit_left_to_right(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map);
+    static QuantumCircuit to_circuit_right_to_left(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map);
     QuantumCircuit simplify(bool ltr) const;
 
     uint32_t get_num_qubits() const {
@@ -237,7 +238,10 @@ class QuantumCircuit {
 
     QuantumCircuit bind_params(const std::vector<double>& params) const;
     size_t get_num_measurements() const;
-    void set_measurement_outcomes(const std::vector<bool>& outcomes);
+    std::vector<size_t> get_measurement_map() const {
+      return measurement_map;
+    }
+    void bind_measurement_outcomes(const std::vector<bool>& outcomes);
 
     QuantumCircuit adjoint(const std::optional<std::vector<double>>& params_opt=std::nullopt) const;
     QuantumCircuit reverse() const;

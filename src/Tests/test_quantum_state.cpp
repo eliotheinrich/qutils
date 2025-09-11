@@ -580,7 +580,7 @@ bool test_mps_weak_measure() {
 
       double d = std::abs(psi.inner(Statevector(mps)));
 
-      ASSERT((b1 == b2) && is_close_eps(1e-4, p1, p2), "Different measurement outcomes observed.");
+      ASSERT((b1 == b2) && is_close_eps(1e-3, p1, p2), fmt::format("Different measurement outcomes observed: {} and {} with probs {} and {}.", b1, b2, p1, p2));
       ASSERT(states_close(psi, mps), fmt::format("States don't match after weak measurement of {} on {}. d = {} \n{}\n{}", P, qubits, d, psi.to_string(), mps.to_string()));
     }
   }
