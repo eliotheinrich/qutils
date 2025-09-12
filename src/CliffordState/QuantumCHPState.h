@@ -4,26 +4,31 @@
 
 #include "CliffordState.h"
 #include "Tableau.h"
+#include "TableauSIMD.h"
 
 class QuantumCHPState : public CliffordState {
   public:
     using CliffordState::expectation;
 
-    mutable Tableau tableau;
+    mutable std::unique_ptr<TableauBase> tableau;
     int print_mode;
 
     QuantumCHPState()=default;
 
-    QuantumCHPState(uint32_t num_qubits)
-      : CliffordState(num_qubits), tableau(Tableau(num_qubits)) {
+    QuantumCHPState(uint32_t num_qubits, bool use_simd=false) : CliffordState(num_qubits) {
+      if (use_simd) {
+        tableau = std::make_unique<TableauSIMD>(num_qubits);
+      } else {
+        tableau = std::make_unique<Tableau>(num_qubits);
+      }
     }
 
-    bool operator==(QuantumCHPState& other) {
-      return tableau == other.tableau;
+    bool operator==(const QuantumCHPState& other) const {
+      return (*tableau == *other.tableau);
     }
 
-    bool operator!=(QuantumCHPState& other) {
-      return !(tableau == other.tableau);
+    bool const operator!=(QuantumCHPState& other) const {
+      return !(*this == other);
     }
 
     virtual std::string to_string() const override;

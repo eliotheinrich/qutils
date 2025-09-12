@@ -75,7 +75,7 @@ const binary_word& BitString::operator[](uint32_t i) const {
   return bits[i];
 }
 
-uint32_t& BitString::operator[](uint32_t i) {
+binary_word& BitString::operator[](uint32_t i) {
   return bits[i];
 }
 

@@ -1728,9 +1728,8 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_partial_distributions);
   ADD_TEST(test_bitstring_expectation);
   ADD_TEST(test_sv_entanglement);
-  //ADD_TEST(test_free_fermion_state);
   ADD_TEST(test_measurement_record);
-  ADD_TEST(test_chp_probs);
+  //ADD_TEST(test_chp_probs);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

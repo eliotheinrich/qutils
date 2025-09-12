@@ -2,22 +2,22 @@
 
 std::string QuantumCHPState::to_string() const {
   if (print_mode == 0) {
-    return tableau.to_string(true);
+    return tableau->to_string(true);
   } else if (print_mode == 1) {
-    return tableau.to_string(false);
+    return tableau->to_string(false);
   } else if (print_mode == 2) {
-    return tableau.to_string_ops(true);
+    return tableau->to_string_ops(true);
   } else {
-    return tableau.to_string_ops(false);
+    return tableau->to_string_ops(false);
   }
 }
 
 void QuantumCHPState::rref() {
-  tableau.rref();
+  tableau->rref();
 }
 
 void QuantumCHPState::xrref() {
-  tableau.xrref();
+  tableau->xrref();
 }
 
 void QuantumCHPState::set_print_mode(const std::string& mode) {
@@ -35,55 +35,61 @@ void QuantumCHPState::set_print_mode(const std::string& mode) {
 }
 
 Statevector QuantumCHPState::to_statevector() const {
-  return tableau.to_statevector();
+  return tableau->to_statevector();
 }
 
 void QuantumCHPState::h(uint32_t a) {
-  tableau.h(a);
+  tableau->h(a);
 }
 
 void QuantumCHPState::s(uint32_t a) {
-  tableau.s(a);
+  tableau->s(a);
 }
 
 void QuantumCHPState::sd(uint32_t a) {
-  tableau.s(a);
-  tableau.s(a);
-  tableau.s(a);
+  tableau->s(a);
+  tableau->s(a);
+  tableau->s(a);
 }
 
 void QuantumCHPState::cx(uint32_t a, uint32_t b) {
-  tableau.cx(a, b);
+  tableau->cx(a, b);
 }
 
 void QuantumCHPState::cy(uint32_t a, uint32_t b) {
-  tableau.s(b);
-  tableau.h(b);
-  tableau.cz(a, b);
-  tableau.h(b);
-  tableau.sd(b);
+  tableau->s(b);
+  tableau->h(b);
+  tableau->cz(a, b);
+  tableau->h(b);
+  tableau->sd(b);
 }
 
 void QuantumCHPState::cz(uint32_t a, uint32_t b) {
-  tableau.h(b);
-  tableau.cx(a, b);
-  tableau.h(b);
+  tableau->h(b);
+  tableau->cx(a, b);
+  tableau->h(b);
 }
 
 PauliString QuantumCHPState::get_stabilizer(size_t i) const {
-  return tableau.stabilizers[i];
+  return tableau->get_stabilizer(i);
 }
 
 PauliString QuantumCHPState::get_destabilizer(size_t i) const {
-  return tableau.destabilizers[i];
+  std::vector<Pauli> paulis(num_qubits);
+  for (size_t j = 0; j < num_qubits; j++) {
+    paulis[i] = tableau->get_pauli(i, j);
+  }
+  uint8_t phase = tableau->get_phase(i);
+  return PauliString(paulis, phase);
 }
 
 double QuantumCHPState::expectation(const BitString& bits, std::optional<QubitSupport> support) const {
   if (support) {
-    Tableau restricted = tableau.partial_trace(to_qubits(support_complement(support.value(), num_qubits)));
-    return restricted.bitstring_amplitude(bits);
+    // TODO add support for SIMD
+    //Tableau restricted = tableau->partial_trace(to_qubits(support_complement(support.value(), num_qubits)));
+    return tableau->bitstring_amplitude(bits);
   } else {
-    return tableau.bitstring_amplitude(bits);
+    return tableau->bitstring_amplitude(bits);
   }
 }
 
@@ -104,7 +110,11 @@ std::vector<double> QuantumCHPState::probabilities() const {
 }
 
 std::vector<PauliString> QuantumCHPState::stabilizers() const {
-  return tableau.stabilizers;
+  std::vector<PauliString> stabilizers(num_qubits);
+  for (size_t i = 0; i < num_qubits; i++) {
+    stabilizers[i] = get_stabilizer(i);
+  }
+  return stabilizers;
 }
 
 void QuantumCHPState::random_clifford(const Qubits& qubits) {
@@ -112,22 +122,30 @@ void QuantumCHPState::random_clifford(const Qubits& qubits) {
 }
 
 double QuantumCHPState::mzr_expectation(uint32_t a) const {
-  auto [deterministic, _] = tableau.mzr_deterministic(a);
-  Tableau tmp = tableau; // TODO do this without copying?
-  if (deterministic) {
-    auto [outcome, p] = tmp.mzr(a);
-    return 2*int(outcome) - 1.0;
-  } else {
+  auto [deterministic, _] = tableau->mzr_deterministic(a);
+  if (!deterministic) {
     return 0.0;
+  } else {
+    PauliString scratch(num_qubits);
+    for (uint32_t i = 0; i < num_qubits; i++) {
+      Pauli p = tableau->get_pauli(i, a);
+      if (p == Pauli::X || p == Pauli::Y) {
+        scratch = scratch * tableau->get_stabilizer(i);
+      }
+    }
+
+    // TODO check
+    bool b = scratch.get_r();
+    return 2*int(b) - 1.0;
   }
 }
 
 MeasurementData QuantumCHPState::mzr(uint32_t a, std::optional<bool> outcome) {
-  return tableau.mzr(a, outcome);
+  return tableau->mzr(a, outcome);
 }
 
 double QuantumCHPState::sparsity() const {
-  return tableau.sparsity();
+  return tableau->sparsity();
 }
 
 double QuantumCHPState::entanglement(const QubitSupport& support, uint32_t index) {
@@ -148,7 +166,7 @@ double QuantumCHPState::entanglement(const QubitSupport& support, uint32_t index
     return entanglement(qubits_complement, index);
   }
 
-  int rank = tableau.rank(qubits);
+  int rank = tableau->rank(qubits);
 
   int s = rank - partition_size;
 
@@ -158,29 +176,21 @@ double QuantumCHPState::entanglement(const QubitSupport& support, uint32_t index
 int QuantumCHPState::xrank() const {
   Qubits qubits(num_qubits);
   std::iota(qubits.begin(), qubits.end(), 0);
-  return tableau.xrank(qubits);
+  return tableau->xrank(qubits);
 }
 
 int QuantumCHPState::partial_xrank(const Qubits& qubits) const {
-  return tableau.xrank(qubits);
+  return tableau->xrank(qubits);
 }
 
 int QuantumCHPState::rank() const {
   Qubits qubits(num_qubits);
   std::iota(qubits.begin(), qubits.end(), 0);
-  return tableau.rank(qubits);
+  return tableau->rank(qubits);
 }
 
 int QuantumCHPState::partial_rank(const Qubits& qubits) const {
-  return tableau.rank(qubits);
-}
-
-void QuantumCHPState::set_x(size_t i, size_t j, bool v) {
-  tableau.stabilizers[i].set_x(j, v);
-}
-
-void QuantumCHPState::set_z(size_t i, size_t j, bool v) {
-  tableau.stabilizers[i].set_z(j, v);
+  return tableau->rank(qubits);
 }
 
 #include <glaze/glaze.hpp>
@@ -205,16 +215,17 @@ struct glz::meta<PauliString> {
 template<>
 struct glz::meta<Tableau> {
   static constexpr auto value = glz::object(
-    "num_qubits", &Tableau::num_qubits,
-    "stabilizers", &Tableau::stabilizers,
-    "destabilizers", &Tableau::destabilizers
+    "num_qubits", &Tableau::num_qubits
+    // TODO add serialization back in
+    //"stabilizers", &Tableau::stabilizers,
+    //"destabilizers", &Tableau::destabilizers
   );
 };
 
 template<>
 struct glz::meta<QuantumCHPState> {
   static constexpr auto value = glz::object(
-    "tableau", &QuantumCHPState::tableau,
+    //"tableau", &QuantumCHPState::tableau,
     "print_mode", &QuantumCHPState::print_mode
   );
 };

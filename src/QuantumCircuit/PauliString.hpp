@@ -111,7 +111,7 @@ constexpr std::complex<double> sign_from_bits(uint8_t phase) {
 }
 
 
-using binary_word = uint32_t;
+using binary_word = uint64_t;
 
 struct BitString {
   uint32_t num_bits;
@@ -135,25 +135,25 @@ struct BitString {
     return 8u*sizeof(binary_word);
   }
 
-  inline bool get(uint32_t i) const {
-    uint32_t word = bits[i / binary_word_size()];
+  inline binary_word get(uint32_t i) const {
+    binary_word word = bits[i / binary_word_size()];
     uint32_t bit_ind = i % binary_word_size();
 
-    return (word >> bit_ind) & 1u;
+    return (word >> bit_ind) & static_cast<binary_word>(1);
   }
 
-  inline void set(uint32_t i, bool v) {
+  inline void set(uint32_t i, binary_word v) {
     uint32_t word_ind = i / binary_word_size();
     uint32_t bit_ind = i % binary_word_size();
 
-    bits[word_ind] = (bits[word_ind] & ~(1u << bit_ind)) | (v << bit_ind);
+    bits[word_ind] = (bits[word_ind] & ~(static_cast<binary_word>(1) << bit_ind)) | (v << bit_ind);
   }
 
   uint32_t size() const;
 
   const binary_word& operator[](uint32_t i) const;
 
-  uint32_t& operator[](uint32_t i);
+  binary_word& operator[](uint32_t i);
 
   BitString operator^(const BitString& other) const;
 
@@ -393,23 +393,24 @@ class PauliString {
     // It is slightly faster (~20-30%) to query both the x and z bits at a given site
     // at the same time, storing them in the first two bits of the return value.
     inline uint8_t get_xz(uint32_t i) const {
-      uint32_t bit_ind = 2u*(i % 16u);
-      return 0u | (((bit_string.bits[i / 16u] >> bit_ind) & 3u) << 0u);
+      constexpr uint32_t num_paulis = BitString::binary_word_size()/2;
+      uint32_t bit_ind = 2u*(i % num_paulis);
+      return 0u | (((bit_string.bits[i / num_paulis] >> bit_ind) & 3u) << 0u);
     }
 
     inline uint8_t get_r() const { 
       return phase; 
     }
 
-    inline void set(size_t i, bool v) {
+    inline void set(size_t i, binary_word v) {
       bit_string.set(i, v);
     }
 
-    inline void set_x(uint32_t i, bool v) {
+    inline void set_x(uint32_t i, binary_word v) {
       bit_string.set(2*i, v);
     }
 
-    inline void set_z(uint32_t i, bool v) {
+    inline void set_z(uint32_t i, binary_word v) {
       bit_string.set(2*i + 1, v);
     }
 

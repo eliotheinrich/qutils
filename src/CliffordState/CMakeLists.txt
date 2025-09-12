@@ -3,6 +3,7 @@ add_library(clifford_state
     QuantumCHPState.cpp
     QuantumGraphState.cpp
     Tableau.cpp
+    TableauSIMD.cpp
 )
 
 

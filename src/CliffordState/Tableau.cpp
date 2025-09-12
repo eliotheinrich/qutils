@@ -1,37 +1,79 @@
 #include "Tableau.h"
 
-#include <string>
-#include <vector>
-#include <random>
-#include <variant>
-#include <algorithm>
-
-#include "QuantumState.h"
-#include "QuantumCircuit.h"
-
-Tableau::Tableau(uint32_t num_qubits) : num_qubits(num_qubits) {
-  stabilizers = std::vector<PauliString>(num_qubits, PauliString(num_qubits));
-  destabilizers = std::vector<PauliString>(num_qubits, PauliString(num_qubits));
-  for (uint32_t i = 0; i < num_qubits; i++) {
-    destabilizers[i].set_x(i, true);
-    stabilizers[i].set_z(i, true);
-  }
+void TableauBase::sd(uint32_t a) {
+  s(a);
+  s(a);
+  s(a);
 }
 
-Eigen::MatrixXi Tableau::to_matrix() const {
-  Eigen::MatrixXi M(num_qubits, 2*num_qubits);
+void TableauBase::x(uint32_t a) {
+  h(a);
+  s(a);
+  s(a);
+  h(a);
+}
 
-  for (size_t i = 0; i < stabilizers.size(); i++) {
+void TableauBase::y(uint32_t a) {
+  h(a);
+  s(a);
+  s(a);
+  h(a);
+  s(a);
+  s(a);
+}
+
+void TableauBase::z(uint32_t a) {
+  s(a);
+  s(a);
+}
+
+void TableauBase::cz(uint32_t a, uint32_t b) {
+  h(b);
+  cx(a, b);
+  h(b);
+}
+
+PauliString TableauBase::get_stabilizer(size_t i) const {
+  std::vector<Pauli> paulis(num_qubits);
+  for (size_t j = 0; j < num_qubits; j++) {
+    paulis[j] = get_pauli(i, j);
+  }
+  uint8_t phase = get_phase(i);
+  return PauliString(paulis, phase);
+}
+
+Eigen::MatrixXi TableauBase::to_matrix() const {
+  Eigen::MatrixXi M = Eigen::MatrixXi::Zero(num_qubits, 2*num_qubits);
+
+  for (size_t i = 0; i < num_qubits; i++) {
     for (size_t j = 0; j < num_qubits; j++) {
-      M(i, j) = stabilizers[i].get_z(j);
-      M(i, j + num_qubits) = stabilizers[i].get_x(j);
+      Pauli p = get_pauli(i, j);
+      if (p == Pauli::I) {
+
+      } else if (p == Pauli::X) {
+        M(i, j + num_qubits) = 1;
+      } else if (p == Pauli::Z) {
+        M(i, j) = 1;
+      } else {
+        M(i, j) = 1;
+        M(i, j + num_qubits) = 1;
+      }
     }
   }
 
   return M;
 }
 
-Statevector Tableau::to_statevector() const {
+bool TableauBase::operator==(const TableauBase& other) const {
+  for (size_t i = 0; i < num_qubits; i++) {
+    if (get_stabilizer(i) != other.get_stabilizer(i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+Statevector TableauBase::to_statevector() const {
   if (num_qubits > 15) {
     throw std::runtime_error("Cannot create a Statevector with more than 31 qubits.");
   }
@@ -39,7 +81,8 @@ Statevector Tableau::to_statevector() const {
   Eigen::MatrixXcd dm = Eigen::MatrixXcd::Identity(1u << num_qubits, 1u << num_qubits);
   Eigen::MatrixXcd I = Eigen::MatrixXcd::Identity(1u << num_qubits, 1u << num_qubits);
 
-  for (const PauliString& p : stabilizers) {
+  for (size_t i = 0; i < num_qubits; i++) {
+    PauliString p = get_stabilizer(i);
     Eigen::MatrixXcd g = p.to_matrix();
     dm = dm*((I + g)/2.0);
   }
@@ -49,6 +92,43 @@ Statevector Tableau::to_statevector() const {
   Eigen::VectorXcd vec = solver.eigenvectors().block(0,N-1,N,1).rowwise().reverse();
 
   return Statevector(vec);
+}
+
+double TableauBase::sparsity() const {
+  float nonzero = 0;
+  for (uint32_t i = 0; i < num_qubits; i++) {
+    for (uint32_t j = 0; j < num_qubits; j++) {
+      Pauli p = get_pauli(i, j);
+      if (p == Pauli::X || p == Pauli::Z) {
+        nonzero += 1;
+      } else if (p == Pauli::Y) {
+        nonzero += 2;
+      }
+    }
+  }
+
+  return nonzero/(2*num_qubits*num_qubits);
+}
+
+Tableau::Tableau(uint32_t num_qubits) : TableauBase(num_qubits) {
+  stabilizers = std::vector<PauliString>(num_qubits, PauliString(num_qubits));
+  destabilizers = std::vector<PauliString>(num_qubits, PauliString(num_qubits));
+  for (uint32_t i = 0; i < num_qubits; i++) {
+    destabilizers[i].set_x(i, true);
+    stabilizers[i].set_z(i, true);
+  }
+}
+
+Pauli Tableau::get_pauli(size_t i, size_t j) const {
+  return stabilizers[i].to_pauli(j);
+}
+
+PauliString Tableau::get_stabilizer(size_t i) const {
+  return stabilizers[i];
+}
+
+uint8_t Tableau::get_phase(size_t i) const {
+  return stabilizers[i].get_r();
 }
 
 bool Tableau::operator==(Tableau& other) {
@@ -279,6 +359,7 @@ std::string Tableau::to_string(bool print_destabilizers) const {
       s += destabilizers[i].to_string();
       s += (i == destabilizers.size() - 1) ? "]" : "\n";
     }
+    s += "\n";
   }
 
   for (size_t i = 0; i < stabilizers.size(); i++) {
@@ -298,6 +379,7 @@ std::string Tableau::to_string_ops(bool print_destabilizers) const {
       s += destabilizers[i].to_string_ops();
       s += (i == destabilizers.size() - 1) ? "]" : "\n";
     }
+    s += "\n";
   }
 
   for (size_t i = 0; i < stabilizers.size(); i++) {
@@ -444,22 +526,4 @@ MeasurementData Tableau::mzr(uint32_t a, std::optional<bool> outcome) {
     
     return {b, 1.0};
   }
-}
-
-double Tableau::sparsity() const {
-  float nonzero = 0;
-  for (uint32_t i = 0; i < stabilizers.size(); i++) {
-    for (uint32_t j = 0; j < num_qubits; j++) {
-      nonzero += stabilizers[i].get_x(j);
-      nonzero += stabilizers[i].get_z(j);
-    }
-  }
-  for (uint32_t i = 0; i < stabilizers.size(); i++) {
-    for (uint32_t j = 0; j < num_qubits; j++) {
-      nonzero += stabilizers[i].get_x(j);
-      nonzero += stabilizers[i].get_z(j);
-    }
-  }
-
-  return nonzero/((stabilizers.size() + destabilizers.size())*num_qubits*2);
 }
