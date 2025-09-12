@@ -1,5 +1,7 @@
 #include "TableauSIMD.h"
 
+#include <immintrin.h>
+
 static inline constexpr size_t binary_word_size() {
   return 8u*sizeof(binary_word);
 }
@@ -376,16 +378,68 @@ std::string TableauSIMD::to_string_ops(bool print_destabilizers) const {
 
 void TableauSIMD::h(uint32_t a) {
   validate_qubit(a);
-  for (size_t i = 0; i < 2*num_qubits; i++) {
-    uint8_t xza = get_xz(i, a);
-    bool xa = (xza >> 0u) & 1u;
-    bool za = (xza >> 1u) & 1u;
+  __m256i mask_x = _mm256_set1_epi64x(1ULL << (2*a));
+  __m256i mask_z = _mm256_set1_epi64x(1ULL << (2*a+1));
 
-    constexpr bool h_phase_lookup[] = {0, 0, 0, 1};
+  __m256i mask_p = _mm256_set1_epi64x(1ULL << a);
 
-    _set(phase, i, _get(phase, i) != h_phase_lookup[xza]);
-    set(i, 2*a, za);
-    set(i, 2*a+1, xa);
+  size_t word_ind = 2*a / (binary_word_size()/2);
+  constexpr size_t LANES = 256/binary_word_size();
+  const __m256i one_vec = _mm256_set1_epi64x(1LL);
+  for (size_t i = 0; i < 2*num_qubits; i += LANES) {
+    size_t remaining = 2*num_qubits - i;
+    if (remaining < LANES) {
+      throw std::runtime_error("This case not accounted for.");
+      break;
+    }
+
+    binary_word in0 =   rows[i][word_ind];
+    binary_word in1 = rows[i+1][word_ind];
+    binary_word in2 = rows[i+2][word_ind];
+    binary_word in3 = rows[i+3][word_ind];
+
+    __m256i v = _mm256_setr_epi64x(in0, in1, in2, in3);
+    __m256i bit_x = _mm256_and_si256(v, mask_x);
+    __m256i bit_z = _mm256_and_si256(v, mask_z);
+
+    __m256i bit_i_to_j = _mm256_slli_epi64(bit_x, 1);
+
+    __m256i bit_j_to_i = _mm256_srli_epi64(bit_z, 1);
+
+    __m256i cleared = _mm256_andnot_si256(_mm256_or_si256(mask_x, mask_z), v);
+    __m256i v_new = _mm256_or_si256(cleared, _mm256_or_si256(bit_i_to_j, bit_j_to_i));
+
+    rows[i][word_ind]     = _mm256_extract_epi64(v_new, 0);
+    rows[i + 1][word_ind] = _mm256_extract_epi64(v_new, 1);
+    rows[i + 2][word_ind] = _mm256_extract_epi64(v_new, 2);
+    rows[i + 3][word_ind] = _mm256_extract_epi64(v_new, 3);
+
+    __m256i xbits = _mm256_and_si256(_mm256_srli_epi64(v, 2*a), one_vec);
+    __m256i zbits = _mm256_and_si256(_mm256_srli_epi64(v, 2*a+1), one_vec);
+
+    // Compute (xa & za) for each lane
+    __m256i phase_flip = _mm256_and_si256(xbits, zbits);
+
+    // Convert to a 4-bit mask (one bit per lane)
+    int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi64(phase_flip, one_vec));
+
+    // The mask now has 8 bits per lane, but only the LSB in each 8-byte chunk matters.
+    // We can compress it down:
+    uint64_t flip_mask = ((mask & 0x0101) ? 1ULL : 0ULL)
+                       | ((mask & 0x0202) ? 2ULL : 0ULL)
+                       | ((mask & 0x0404) ? 4ULL : 0ULL)
+                       | ((mask & 0x0808) ? 8ULL : 0ULL);
+    
+
+    phase[word_ind] ^= (flip_mask << i);
+
+
+
+    //constexpr bool h_phase_lookup[] = {0, 0, 0, 1};
+
+    //_set(phase, i, _get(phase, i) != h_phase_lookup[xza]);
+    //set(i, 2*a, za);
+    //set(i, 2*a+1, xa);
   }
 }
 

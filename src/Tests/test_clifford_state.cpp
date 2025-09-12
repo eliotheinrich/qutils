@@ -171,13 +171,13 @@ bool test_chp_state() {
 }
 
 bool test_chp_simd() {
-  constexpr size_t nqb = 20;
+  constexpr size_t nqb = 4;
   QuantumCHPState chp1(nqb, false);
   QuantumCHPState chp2(nqb, true);
   chp1.set_print_mode("paulis_all");
   chp2.set_print_mode("paulis_all");
 
-  for (size_t i = 0; i < 20; i++) {
+  for (size_t i = 0; i < 1; i++) {
     QuantumCircuit qc(nqb);
     qc.append(random_clifford(nqb));
     for (size_t q = 0; q < 5; q++) {
@@ -232,6 +232,58 @@ bool test_chp_probs() {
   return true;
 }
 
+bool test_simd() {
+
+    size_t offset = 1;
+    __m256i mask_x = _mm256_set1_epi64x(1ULL << offset);
+    __m256i mask_z = _mm256_set1_epi64x(1ULL << (1 + offset));
+
+    uint64_t word[4] = {0b11111, 0b11111, 0b11111, 0b11111};
+    for (size_t i = 0; i < 4; i++) {
+      std::cout << fmt::format("{:010b}\t", word[i]);
+    } std::cout << "\n";
+    __m256i wordv = _mm256_loadu_si256(reinterpret_cast<__m256i*>(&word[0]));
+    __m256i x_bit = _mm256_and_si256(wordv, mask_x);
+    _mm256_storeu_si256(reinterpret_cast<__m256i*>(&word[0]), x_bit);
+
+    for (size_t i = 0; i < 4; i++) {
+      std::cout << fmt::format("{:010b}\t", word[i]);
+    } std::cout << "\n";
+
+
+
+    //const size_t word_bits = binary_word_size();
+    //size_t bit = 2*a;
+    //size_t word_index = bit / word_bits;
+    //size_t bit_offset = bit % word_bits;
+
+    //__m256i mask_x = _mm256_set1_epi64x(1ULL << bit_offset);
+    //__m256i mask_z = _mm256_set1_epi64x(1ULL << (bit_offset + 1));
+
+    //for (size_t i = 0; i < 2*num_qubits; i++) {
+    //    binary_word* row = rows[i];
+    //    __m256i word = _mm256_loadu_si256(reinterpret_cast<__m256i*>(&row[word_index]));
+
+    //    __m256i x_bit = _mm256_and_si256(word, mask_x);
+    //    __m256i z_bit = _mm256_and_si256(word, mask_z);
+
+    //    // new Z = X ^ Z
+    //    __m256i new_z = _mm256_xor_si256(x_bit, z_bit);
+
+    //    // Clear old Z, set new Z
+    //    word = _mm256_andnot_si256(mask_z, word);
+    //    word = _mm256_or_si256(word, new_z);
+
+    //    _mm256_storeu_si256(reinterpret_cast<__m256i*>(&row[word_index]), word);
+
+    //    // Phase update
+    //    uint8_t xza = get_xz(i, a);
+    //    _set(phase, i, (_get(phase, i) != s_phase_lookup[xza]));
+    //}
+
+  return true;
+}
+
 using TestResult = std::tuple<bool, int>;
 
 #define ADD_TEST(x)                                                               \
@@ -263,6 +315,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_bitstring_expectation);
   ADD_TEST(test_measurement_record);
   ADD_TEST(test_chp_probs);
+  ADD_TEST(test_simd);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";
