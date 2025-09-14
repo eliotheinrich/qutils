@@ -7,6 +7,13 @@
 #include "TableauSIMD.h"
 
 class QuantumCHPState : public CliffordState {
+  private:
+#ifdef __AVX__
+    static constexpr bool avx_enabled = true;
+#else
+    static constexpr bool avx_enabled = false;
+#endif
+
   public:
     using CliffordState::expectation;
 
@@ -15,13 +22,7 @@ class QuantumCHPState : public CliffordState {
 
     QuantumCHPState()=default;
 
-    QuantumCHPState(uint32_t num_qubits, bool use_simd=false) : CliffordState(num_qubits) {
-      if (use_simd) {
-        tableau = std::make_unique<TableauSIMD>(num_qubits);
-      } else {
-        tableau = std::make_unique<Tableau>(num_qubits);
-      }
-    }
+    QuantumCHPState(uint32_t num_qubits, bool use_simd=avx_enabled);
 
     bool operator==(const QuantumCHPState& other) const {
       return (*tableau == *other.tableau);

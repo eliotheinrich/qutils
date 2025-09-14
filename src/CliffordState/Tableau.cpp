@@ -1,4 +1,5 @@
 #include "Tableau.h"
+#include <stdexcept>
 
 void TableauBase::sd(uint32_t a) {
   s(a);
@@ -70,6 +71,12 @@ bool TableauBase::operator==(const TableauBase& other) const {
       return false;
     }
   }
+
+  for (size_t i = 0; i < num_qubits; i++) {
+    if (get_destabilizer(i) != other.get_destabilizer(i)) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -127,6 +134,10 @@ PauliString Tableau::get_stabilizer(size_t i) const {
   return stabilizers[i];
 }
 
+PauliString Tableau::get_destabilizer(size_t i) const {
+  return destabilizers[i];
+}
+
 uint8_t Tableau::get_phase(size_t i) const {
   return stabilizers[i].get_r();
 }
@@ -176,6 +187,7 @@ void Tableau::rref(const Qubits& sites) {
 
     if (found_pivot) {
       std::swap(stabilizers[row], stabilizers[pivot_row]);
+      std::swap(destabilizers[row], destabilizers[pivot_row]);
 
       for (uint32_t i = 0; i < stabilizers.size(); i++) {
         if (i == row) {
@@ -184,6 +196,7 @@ void Tableau::rref(const Qubits& sites) {
 
         if ((z && stabilizers[i].get_z(c)) || (!z && stabilizers[i].get_x(c))) {
           stabilizers[i] = stabilizers[i] * stabilizers[row];
+          destabilizers[row] = destabilizers[row] * destabilizers[i];
         }
       }
 

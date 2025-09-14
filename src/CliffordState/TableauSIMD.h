@@ -27,8 +27,9 @@ class TableauSIMD : public TableauBase {
     bool get(size_t i, size_t j) const;
     void reset(int i);
     void rowsum(int i, int j);
+    void swap(size_t i, size_t j);
     inline uint8_t get_xz(int i, int j) const {
-      constexpr uint32_t num_paulis = BitString::binary_word_size()/2;
+      constexpr uint32_t num_paulis = binary_word_size()/2;
       uint32_t bit_ind = 2u*(j % num_paulis);
       return 0u | (((rows[i][j / num_paulis] >> bit_ind) & 3u) << 0u);
     }
@@ -38,6 +39,8 @@ class TableauSIMD : public TableauBase {
     TableauSIMD(uint32_t num_qubits);
 
     virtual Pauli get_pauli(size_t i, size_t j) const override;
+    virtual PauliString get_stabilizer(size_t i) const override;
+    virtual PauliString get_destabilizer(size_t i) const override;
 
     bool operator==(TableauSIMD& other);
 

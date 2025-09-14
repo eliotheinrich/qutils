@@ -113,6 +113,10 @@ constexpr std::complex<double> sign_from_bits(uint8_t phase) {
 
 using binary_word = uint64_t;
 
+static inline constexpr size_t binary_word_size() {
+  return 8u*sizeof(binary_word);
+}
+
 struct BitString {
   uint32_t num_bits;
   std::vector<binary_word> bits;
@@ -130,10 +134,6 @@ struct BitString {
   uint32_t hamming_weight() const;
 
   QubitInterval support_range() const;
-
-  static inline constexpr size_t binary_word_size() {
-    return 8u*sizeof(binary_word);
-  }
 
   inline binary_word get(uint32_t i) const {
     binary_word word = bits[i / binary_word_size()];
@@ -393,7 +393,7 @@ class PauliString {
     // It is slightly faster (~20-30%) to query both the x and z bits at a given site
     // at the same time, storing them in the first two bits of the return value.
     inline uint8_t get_xz(uint32_t i) const {
-      constexpr uint32_t num_paulis = BitString::binary_word_size()/2;
+      constexpr uint32_t num_paulis = binary_word_size()/2;
       uint32_t bit_ind = 2u*(i % num_paulis);
       return 0u | (((bit_string.bits[i / num_paulis] >> bit_ind) & 3u) << 0u);
     }
