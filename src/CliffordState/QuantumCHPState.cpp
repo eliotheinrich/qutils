@@ -1,5 +1,13 @@
 #include "QuantumCHPState.h"
 
+QuantumCHPState::QuantumCHPState(uint32_t num_qubits, bool use_simd) : CliffordState(num_qubits) {
+  if (use_simd) {
+    tableau = std::make_unique<TableauSIMD>(num_qubits);
+  } else {
+    tableau = std::make_unique<Tableau>(num_qubits);
+  }
+}
+
 std::string QuantumCHPState::to_string() const {
   if (print_mode == 0) {
     return tableau->to_string(true);

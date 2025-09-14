@@ -20,6 +20,7 @@ class TableauBase {
 
     virtual Pauli get_pauli(size_t i, size_t j) const=0;
     virtual PauliString get_stabilizer(size_t i) const;
+    virtual PauliString get_destabilizer(size_t i) const=0;
     virtual uint8_t get_phase(size_t i) const=0;
 
     virtual Eigen::MatrixXi to_matrix() const;
@@ -45,6 +46,8 @@ class TableauBase {
         throw std::invalid_argument(error_message);
       }
     }
+
+    //Tableau partial_trace(const Qubits& qubits);
 
     virtual std::string to_string(bool print_destabilizers=true) const=0;
     virtual std::string to_string_ops(bool print_destabilizers=true) const=0;
@@ -80,6 +83,7 @@ class Tableau : public TableauBase {
 
     virtual Pauli get_pauli(size_t i, size_t j) const override;
     virtual PauliString get_stabilizer(size_t i) const override;
+    virtual PauliString get_destabilizer(size_t i) const override;
     virtual uint8_t get_phase(size_t i) const override;
 
     bool operator==(Tableau& other);

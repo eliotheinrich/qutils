@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Logger.hpp"
+
 #include <random>
 #include <stdexcept>
 #include <fmt/format.h>
@@ -24,6 +26,7 @@ class Random {
     Random& operator=(const Random&) = delete;
 
     static void seed_rng(uint32_t s) {
+      Logger::log_info(fmt::format("Seeded rng with s = {}\n", s));
       Random& instance = get_instance();
       instance.seed = s;
       instance.rng.seed(s);
