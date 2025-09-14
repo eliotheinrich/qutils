@@ -4,7 +4,7 @@ project(qutils LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
-add_compile_options(-pthread -w -Wno-error=c++11-narrowing)
+add_compile_options(-pthread -w -mavx2)
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -g") 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3")
@@ -57,7 +57,7 @@ FetchContent_MakeAvailable(${EXTERNALS})
 # -------------------------------- #
 # -------- Adding code ----------- #
 # -------------------------------- #
-
+message("PROJECT_SOURCE_DIR = ${PROJECT_SOURCE_DIR}")
 include_directories(
     ${eigen_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/src
