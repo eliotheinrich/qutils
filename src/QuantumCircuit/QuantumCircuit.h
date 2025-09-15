@@ -33,8 +33,6 @@ class QuantumCircuit {
 
     CircuitDAG to_dag() const;
     static QuantumCircuit to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map, bool ltr=true);
-    static QuantumCircuit to_circuit_left_to_right(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map);
-    static QuantumCircuit to_circuit_right_to_left(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map);
     QuantumCircuit simplify(bool ltr) const;
 
     uint32_t get_num_qubits() const {

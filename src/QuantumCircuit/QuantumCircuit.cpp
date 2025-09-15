@@ -157,40 +157,33 @@ DirectedGraph<int> make_reversed_dag(const CircuitDAG& dag) {
 }
 
 QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map, bool ltr) {
-  if (ltr) {
-    return to_circuit_left_to_right(dag, num_qubits, num_cbits, measurement_map);
-  } else {
-    return to_circuit_right_to_left(dag, num_qubits, num_cbits, measurement_map);
-  }
-}
-
-QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map) {
   auto reversed_dag = make_reversed_dag(dag);
 
-  // Hold a pair of the DAG index and the leftmost qubit
+  // Hold a pair of the DAG index and the reference qubit
   std::set<TreeEntry, PairCmp> leafs;
   for (size_t i = 0; i < dag.num_vertices; i++) {
     if (reversed_dag.degree(i) == 0) {
       const ConditionedInstruction& cinst = dag.get_val(i);
-      uint32_t q = std::ranges::min(get_instruction_support(cinst));
+      uint32_t q = ltr ? std::ranges::min(get_instruction_support(cinst)) : std::ranges::max(get_instruction_support(cinst));
       leafs.emplace(i, q);
     }
   }
 
   QuantumCircuit circuit(num_qubits, num_cbits);
   size_t num_measurements = measurement_map.size();
-  std::vector<size_t> new_measurement_map(num_measurements);;
-  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);;
+  std::vector<size_t> new_measurement_map(num_measurements);
+  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);
 
   size_t i = 0;
-  int pos = 0;
+  int pos = ltr ? 0 : num_qubits;
   std::set<size_t> visited;
   size_t n = 0;
+
   while (!leafs.empty()) {
     auto it = leafs.begin();
     if (n == 0) {
       TreeEntry key = {SIZE_MAX, pos};
-      auto it = leafs.lower_bound(key);
+      it = ltr ? leafs.lower_bound(key) : leafs.upper_bound(key);
 
       uint32_t best = UINT32_MAX;
 
@@ -205,7 +198,7 @@ QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, u
 
       if (it != leafs.end()) {
         try_pick(it);
-      } 
+      }
       if (it != leafs.begin()) {
         try_pick(std::prev(it));
       }
@@ -214,11 +207,11 @@ QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, u
     std::tie(i, pos) = *it;
 
     visited.insert(i);
-    circuit.add_instruction(copy_instruction(dag.get_val(i)));
+    circuit.add_instruction(dag.get_val(i));
 
     if (reversed_map.contains(i)) {
       size_t arg = reversed_map[i];
-      new_measurement_map[arg] = n; 
+      new_measurement_map[arg] = n;
     }
 
     std::set<size_t> new_leafs;
@@ -240,7 +233,7 @@ QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, u
 
     for (size_t j : new_leafs) {
       const ConditionedInstruction& cinst = dag.get_val(j);
-      uint32_t q = std::ranges::min(get_instruction_support(cinst));
+      uint32_t q = ltr ? std::ranges::min(get_instruction_support(cinst)) : std::ranges::max(get_instruction_support(cinst));
       leafs.emplace(j, q);
     }
 
@@ -251,93 +244,6 @@ QuantumCircuit QuantumCircuit::to_circuit_left_to_right(const CircuitDAG& dag, u
   return circuit;
 }
 
-QuantumCircuit QuantumCircuit::to_circuit_right_to_left(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map) {
-  auto reversed_dag = make_reversed_dag(dag);
-
-  // Hold a pair of the DAG index and the leftmost qubit
-  std::set<TreeEntry, PairCmp> leafs;
-  for (size_t i = 0; i < dag.num_vertices; i++) {
-    if (reversed_dag.degree(i) == 0) {
-      const ConditionedInstruction& cinst = dag.get_val(i);
-      uint32_t q = std::ranges::max(get_instruction_support(cinst));
-      leafs.emplace(i, q);
-    }
-  }
-
-  QuantumCircuit circuit(num_qubits, num_cbits);
-  size_t num_measurements = measurement_map.size();
-  std::vector<size_t> new_measurement_map(num_measurements);;
-  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);;
-
-  size_t i = 0;
-  int pos = num_qubits;
-  std::set<size_t> visited;
-  size_t n = 0;
-  while (!leafs.empty()) {
-    auto it = leafs.begin();
-    if (n == 0) {
-      TreeEntry key = {SIZE_MAX, pos};
-      auto it = leafs.upper_bound(key);
-
-      uint32_t best = UINT32_MAX;
-
-      auto try_pick = [&](auto iter) {
-        int q = iter->second;
-        uint32_t d = (q > pos ? q - pos : pos - q);
-        if (d < best) {
-          best = d;
-          it = iter;
-        }
-      };
-
-      if (it != leafs.end()) {
-        try_pick(it);
-      } 
-      if (it != leafs.begin()) {
-        try_pick(std::prev(it));
-      }
-    }
-
-    std::tie(i, pos) = *it;
-
-    visited.insert(i);
-    circuit.add_instruction(copy_instruction(dag.get_val(i)));
-
-    if (reversed_map.contains(i)) {
-      size_t arg = reversed_map[i];
-      new_measurement_map[arg] = n; 
-    }
-
-    std::set<size_t> new_leafs;
-    for (size_t j : dag.edges_of(i)) {
-      bool include = true;
-      for (size_t k : reversed_dag.edges_of(j)) {
-        if (!visited.contains(k)) {
-          include = false;
-          break;
-        }
-      }
-
-      if (include) {
-        new_leafs.insert(j);
-      }
-    }
-
-    leafs.erase(it);
-
-    for (size_t j : new_leafs) {
-      const ConditionedInstruction& cinst = dag.get_val(j);
-      uint32_t q = std::ranges::max(get_instruction_support(cinst));
-      leafs.emplace(j, q);
-    }
-
-    n++;
-  }
-
-  circuit.measurement_map = new_measurement_map;
-
-  return circuit;
-}
 
 std::optional<std::pair<size_t, size_t>> find_mergeable(const CircuitDAG& dag, const auto& reversed_dag) {
   auto mergeable = [](const ConditionedInstruction& cinst) {
@@ -357,10 +263,14 @@ std::optional<std::pair<size_t, size_t>> find_mergeable(const CircuitDAG& dag, c
 
       Qubits s1 = get_instruction_support(cinst1);
       Qubits s2 = get_instruction_support(cinst2);
+      std::sort(s1.begin(), s1.end());
+      std::sort(s2.begin(), s2.end());
 
-      if (reversed_dag.degree(j) == 1 && std::includes(s1.begin(), s1.end(), s2.begin(), s2.end())) {
+      bool is_subset = std::includes(s1.begin(), s1.end(), s2.begin(), s2.end()) || std::includes(s2.begin(), s2.end(), s1.begin(), s1.end());
+
+      if (reversed_dag.degree(j) == 1 && is_subset) {
         return std::make_pair(i, j);
-      } else if (dag.degree(i) == 1 && std::includes(s2.begin(), s2.end(), s1.begin(), s1.end())) {
+      } else if (dag.degree(i) == 1 && is_subset) {
         return std::make_pair(i, j);
       }
     }
@@ -374,6 +284,8 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
   auto reversed_dag = make_reversed_dag(dag);
 
   bool merged_any = true;
+
+  std::vector<size_t> measurement_map = this->measurement_map;
 
   while (merged_any) {
     merged_any = false;
@@ -415,6 +327,12 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
 
       dag.add_edge(k, i);
       reversed_dag.add_edge(i, k);
+    }
+
+    for (size_t p = 0; p < measurement_map.size(); p++) {
+      if (measurement_map[p] > j) {
+        measurement_map[p]--;
+      }
     }
 
     dag.remove_vertex(j);

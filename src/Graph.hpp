@@ -170,6 +170,10 @@ class Graph {
       return s;
     }
 
+    size_t size() const {
+      return num_vertices;
+    }
+
     void add_vertex(std::optional<V> val_opt=std::nullopt) {
       num_vertices++;
       if constexpr (std::is_void_v<T>) {
