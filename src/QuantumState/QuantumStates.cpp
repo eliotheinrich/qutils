@@ -232,7 +232,7 @@ void QuantumState::evolve(const FreeFermionGate& gate) {
   evolve(gate.to_gate());
 }
 
-std::optional<MeasurementData> QuantumState::evolve(const Instruction& inst) {
+std::optional<MeasurementData> QuantumState::evolve(const QuantumInstruction& inst) {
   return std::visit(quantumcircuit_utils::overloaded{
     [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
       _evolve(gate->define(), gate->qubits); 
@@ -265,17 +265,33 @@ EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts
   std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);
 
   for (size_t i = 0; i < circuit.length(); i++) {
-    const auto& cinst = circuit.instructions[i];
-    if (!cinst.should_execute(bits)) {
-      continue;
-    }
+    std::optional<MeasurementData> result;
+    std::visit(quantumcircuit_utils::overloaded {
+      [&](const QuantumInstruction& qinst) {
+        result = evolve(qinst);
+      },
+      [&](const ClassicalInstruction& clinst) {
+        clinst.apply(bits);
+      },
+      [&](const ConditionedInstruction& cinst) {
+        const auto& inst = circuit.instructions[i];
+        if (!cinst.should_execute(bits)) {
+          return;
+        }
 
-    auto result = evolve(cinst.inst);
+        result = evolve(cinst.inst);
+
+        if (result) {
+          if (cinst.target) {
+            bits.set(cinst.target.value(), result->first);
+          }
+        }
+      }
+
+    }, circuit.instructions[i]);
+
     if (result) {
       measurements[reversed_map.at(i)] = result.value();
-      if (cinst.target) {
-        bits.set(cinst.target.value(), result->first);
-      }
     }
   }  
 

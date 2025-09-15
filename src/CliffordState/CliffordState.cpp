@@ -27,31 +27,44 @@ EvolveResult CliffordState::evolve(const QuantumCircuit& circuit, EvolveOpts opt
   // Preparing reversed measurement_map
   size_t num_measurements = circuit.get_num_measurements();
   std::vector<MeasurementData> measurements(num_measurements);
-  std::map<size_t, size_t> reversed_map;
   std::vector<size_t> measurement_map = circuit.get_measurement_map();
-  for (size_t i = 0; i < num_measurements; i++) {
-    reversed_map[measurement_map[i]] = i;
-  }
+  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);
 
   for (size_t i = 0; i < circuit.length(); i++) {
-    const auto& cinst = circuit.instructions[i];
-    if (!cinst.should_execute(bits)) {
-      continue;
-    }
+    std::optional<MeasurementData> result;
+    std::visit(quantumcircuit_utils::overloaded {
+      [&](const QuantumInstruction& qinst) {
+        result = evolve(qinst);
+      },
+      [&](const ClassicalInstruction& clinst) {
+        clinst.apply(bits);
+      },
+      [&](const ConditionedInstruction& cinst) {
+        const auto& inst = circuit.instructions[i];
+        if (!cinst.should_execute(bits)) {
+          return;
+        }
 
-    auto result = evolve(cinst.inst);
+        result = evolve(cinst.inst);
+
+        if (result) {
+          if (cinst.target) {
+            bits.set(cinst.target.value(), result->first);
+          }
+        }
+      }
+
+    }, circuit.instructions[i]);
+
     if (result) {
       measurements[reversed_map.at(i)] = result.value();
-      if (cinst.target) {
-        bits.set(cinst.target.value(), result->first);
-      }
     }
   }  
 
   return process_measurement_results(measurements, opts);
 }
 
-std::optional<MeasurementData> CliffordState::evolve(const Instruction& inst) {
+std::optional<MeasurementData> CliffordState::evolve(const QuantumInstruction& inst) {
   return std::visit(quantumcircuit_utils::overloaded{
       [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
         std::string name = gate->label();

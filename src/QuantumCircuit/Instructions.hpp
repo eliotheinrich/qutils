@@ -479,36 +479,90 @@ struct WeakMeasurement {
   bool get_outcome() const;
 };
 
-using Instruction = std::variant<std::shared_ptr<Gate>, FreeFermionGate, Measurement, WeakMeasurement>;
+using QuantumInstruction = std::variant<std::shared_ptr<Gate>, FreeFermionGate, Measurement, WeakMeasurement>;
+
+struct ClassicalInstruction {
+  enum class OpType { NOT, AND, OR, XOR, NAND };
+  OpType op;
+  std::vector<uint32_t> bits;
+
+  void apply(BitString& target) const {
+    switch (op) {
+      case OpType::NOT: {
+        bool b = target.get(bits[0]);
+        target.set(bits[0], !b);
+        break;
+      }
+      case OpType::AND: {
+        bool b1 = target.get(bits[0]);
+        bool b2 = target.get(bits[1]);
+        target.set(bits[0], b1 && b2);
+        break;
+      }
+      case OpType::OR: {
+        bool b1 = target.get(bits[0]);
+        bool b2 = target.get(bits[1]);
+        target.set(bits[0], b1 || b2);
+        break;
+      }
+      case OpType::XOR: {
+        bool b1 = target.get(bits[0]);
+        bool b2 = target.get(bits[1]);
+        target.set(bits[0], b1 ^ b2);
+        break;
+      }
+      case OpType::NAND: {
+        bool b1 = target.get(bits[0]);
+        bool b2 = target.get(bits[1]);
+        target.set(bits[0], !(b1 && b2));
+        break;
+      }
+    }
+  }
+
+  std::string to_string() const {
+    if (op == OpType::NOT) {
+      return fmt::format("NOT {}", bits[0]);
+    } else if (op == OpType::AND) {
+      return fmt::format("AND {} {}", bits[0], bits[1]);
+    } else if (op == OpType::OR) {
+      return fmt::format("OR {} {}", bits[0], bits[1]);
+    } else if (op == OpType::XOR) {
+      return fmt::format("OR {} {}", bits[0], bits[1]);
+    } else if (op == OpType::NAND) {
+      return fmt::format("NAND {} {}", bits[0], bits[1]);
+    }
+  }
+};
 
 using TargetOpt = std::optional<uint32_t>;
 using ControlOpt = std::optional<uint32_t>;
 
 struct ConditionedInstruction {
   ConditionedInstruction()=default;
-  ConditionedInstruction(const Instruction& inst) : inst(inst) { }
-  ConditionedInstruction(const Instruction& inst, ControlOpt control, TargetOpt target)
+  ConditionedInstruction(const QuantumInstruction& inst) : inst(inst) { }
+  ConditionedInstruction(const QuantumInstruction& inst, ControlOpt control, TargetOpt target)
     : inst(inst), target(target), control(control) { }
 
-  Instruction inst;
+  QuantumInstruction inst;
   ControlOpt control;
   TargetOpt target;
 
-  ConditionedInstruction adjoint() const;
   bool should_execute(const BitString& bits) const {
     return control ? bits.get(control.value()) : true;
   }
 };
 
+using Instruction = std::variant<QuantumInstruction, ClassicalInstruction, ConditionedInstruction>;
 
 template <>
-struct fmt::formatter<Instruction> {
+struct fmt::formatter<QuantumInstruction> {
   template <typename ParseContext>
   constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const Instruction& inst, FormatContext& ctx) const {
-    auto inst_to_string = [](const Instruction& inst) {
+  auto format(const QuantumInstruction& inst, FormatContext& ctx) const {
+    auto inst_to_string = [](const QuantumInstruction& qinst) {
 		  return std::visit(quantumcircuit_utils::overloaded {
         [](std::shared_ptr<Gate> gate) -> std::string {
           std::string gate_str = gate->label() + " ";
@@ -552,10 +606,21 @@ struct fmt::formatter<Instruction> {
           }
           return meas_str;
         }
-      }, inst);
+      }, qinst);
     };
 
     return fmt::format_to(ctx.out(), "{}", inst_to_string(inst));
+  }
+};
+
+template <>
+struct fmt::formatter<ClassicalInstruction> {
+  template <typename ParseContext>
+  constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
+
+  template <typename FormatContext>
+  auto format(const ClassicalInstruction& clinst, FormatContext& ctx) const {
+    return fmt::format_to(ctx.out(), "{} ", clinst.to_string());
   }
 };
 
@@ -565,26 +630,49 @@ struct fmt::formatter<ConditionedInstruction> {
   constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const ConditionedInstruction& inst, FormatContext& ctx) const {
-    auto inst_to_string = [](const ConditionedInstruction& cinst) {
-      std::string s = fmt::format("{}", cinst.inst);
-      if (cinst.control) {
-        s += fmt::format(" c-{}", cinst.control.value());
-      }
+  auto format(const ConditionedInstruction& cinst, FormatContext& ctx) const {
+    std::string s = fmt::format("{}", cinst.inst);
+    if (cinst.control) {
+      s += fmt::format(" c-{}", cinst.control.value());
+    }
 
-      if (cinst.target) {
-        s += fmt::format(" t-{}", cinst.target.value());
-      }
-		  return s;
+    if (cinst.target) {
+      s += fmt::format(" t-{}", cinst.target.value());
+    }
+
+    return fmt::format_to(ctx.out(), "{}", s);
+  }
+};
+
+
+template <>
+struct fmt::formatter<Instruction> {
+  template <typename ParseContext>
+  constexpr auto parse(ParseContext& ctx) { return ctx.begin(); }
+
+  template <typename FormatContext>
+  auto format(const Instruction& inst, FormatContext& ctx) const {
+    auto inst_to_string = [](const Instruction& inst) {
+      return std::visit(quantumcircuit_utils::overloaded {
+        [](const QuantumInstruction& qinst) {
+          return fmt::format("{}", qinst);
+        },
+        [](const ClassicalInstruction& clinst) {
+          return fmt::format("{}", clinst);
+        },
+        [](const ConditionedInstruction& cinst) {
+          return fmt::format("{}", cinst);
+        }
+      }, inst);
     };
 
     return fmt::format_to(ctx.out(), "{}", inst_to_string(inst));
   }
 };
 
-ConditionedInstruction copy_instruction(const ConditionedInstruction& cinst);
-
-Qubits get_instruction_support(const ConditionedInstruction& cinst);
-Qubits get_instruction_classical_support(const ConditionedInstruction& cinst);
-
-bool instruction_is_unitary(const ConditionedInstruction& cinst);
+Instruction copy_instruction(const Instruction& inst);
+Qubits get_instruction_support(const Instruction& inst);
+Qubits get_instruction_classical_support(const Instruction& inst);
+bool instruction_is_unitary(const Instruction& inst);
+Instruction instruction_adjoint(const Instruction& inst);
+bool instruction_is_classical(const Instruction& inst);

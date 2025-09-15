@@ -1,4 +1,5 @@
 #include "Instructions.hpp"
+#include "CircuitUtils.h"
 
 #include <unsupported/Eigen/MatrixFunctions>
 
@@ -588,41 +589,35 @@ std::string FreeFermionGate::to_string() const {
   return fmt::format("{} + h.c.", fmt::join(s, " + "));
 }
 
-ConditionedInstruction copy_instruction(const ConditionedInstruction& cinst) {
-  Instruction inst = std::visit(quantumcircuit_utils::overloaded {
+QuantumInstruction copy_quantum_instruction(const QuantumInstruction& qinst) {
+  return std::visit(quantumcircuit_utils::overloaded {
     [](std::shared_ptr<Gate> gate) {
-      return Instruction(gate->clone());
+      return QuantumInstruction(gate->clone());
     },
     [](const FreeFermionGate& gate) {
-      return Instruction(gate);;
+      return QuantumInstruction(gate);;
     },
     [](const Measurement& m) {
-      return Instruction(m);
+      return QuantumInstruction(m);
     },
     [](const WeakMeasurement& m) {
-      return Instruction(m);
+      return QuantumInstruction(m);
     }
-  }, cinst.inst);
-
-  // TODO avoid copy of inst
-  return ConditionedInstruction(inst, cinst.control, cinst.target);
+  }, qinst);
 }
 
-ConditionedInstruction ConditionedInstruction::adjoint() const {
+Instruction copy_instruction(const Instruction& inst) {
   return std::visit(quantumcircuit_utils::overloaded {
-    [this](std::shared_ptr<Gate> gate) -> ConditionedInstruction {
-      return {gate->adjoint(), control, target};
-    },
-    [this](const FreeFermionGate& gate) -> ConditionedInstruction {
-      return {gate.adjoint(), control, target};
-    },
-    [](const Measurement& m) -> ConditionedInstruction {
-      throw std::runtime_error("Cannot return adjoint of non-unitary operations.");
-    },
-    [](const WeakMeasurement& m) -> ConditionedInstruction {
-      throw std::runtime_error("Cannot return adjoint of non-unitary operations.");
-    }
-  }, inst);
+      [](const QuantumInstruction& qinst) -> Instruction {
+        return copy_quantum_instruction(qinst);
+      },
+      [](const ClassicalInstruction& clinst) -> Instruction {
+        return ClassicalInstruction(clinst);
+      },
+      [](const ConditionedInstruction& cinst) -> Instruction {
+        return ConditionedInstruction(copy_quantum_instruction(cinst.inst), cinst.control, cinst.target);
+      }
+    }, inst);
 }
 
 Measurement::Measurement(const Qubits& qubits, std::optional<PauliString> pauli, std::optional<bool> outcome)
@@ -709,7 +704,7 @@ bool WeakMeasurement::get_outcome() const {
   return outcome.value();
 }
 
-Qubits get_instruction_support(const ConditionedInstruction& cinst) {
+Qubits get_quantum_instruction_support(const QuantumInstruction& qinst) {
 	return std::visit(quantumcircuit_utils::overloaded {
     [](const std::shared_ptr<Gate> gate) { 
       return gate->qubits;
@@ -723,27 +718,110 @@ Qubits get_instruction_support(const ConditionedInstruction& cinst) {
     [](const WeakMeasurement& m) {
       return m.qubits;
     }
-  }, cinst.inst);
+  }, qinst);
 }
 
-Qubits get_instruction_classical_support(const ConditionedInstruction& cinst) {
-  Qubits support;
-  if (cinst.control) {
-    support.push_back(cinst.control.value());
-  }
-
-  if (cinst.target) {
-    support.push_back(cinst.target.value());
-  }
-
-  return support;
+Qubits get_instruction_support(const Instruction& inst) {
+	return std::visit(quantumcircuit_utils::overloaded {
+    [](const QuantumInstruction& qinst) -> Qubits {
+      return get_quantum_instruction_support(qinst);
+    },
+    [](const ClassicalInstruction& clinst) -> Qubits {
+      return {};
+    },
+    [](const ConditionedInstruction& cinst) -> Qubits { 
+      return get_quantum_instruction_support(cinst.inst);
+    },
+  }, inst);
 }
 
-bool instruction_is_unitary(const ConditionedInstruction& cinst) {
+Qubits get_instruction_classical_support(const Instruction& inst) {
+	return std::visit(quantumcircuit_utils::overloaded {
+    [](const QuantumInstruction& qinst) -> Qubits {
+      return {};
+    },
+    [](const ClassicalInstruction& clinst) -> Qubits {
+      return clinst.bits;
+    },
+    [](const ConditionedInstruction& cinst) -> Qubits { 
+      Qubits support;
+      if (cinst.control) {
+        support.push_back(cinst.control.value());
+      }
+
+      if (cinst.target) {
+        support.push_back(cinst.target.value());
+      }
+
+      return support;
+    },
+  }, inst);
+}
+
+bool quantum_instruction_is_unitary(const QuantumInstruction& qinst) {
   return std::visit(quantumcircuit_utils::overloaded {
     [](std::shared_ptr<Gate> gate) { return true; },
     [](const FreeFermionGate& gate) { return true; },
     [](const Measurement& m) { return false; },
     [](const WeakMeasurement& m) { return false; }
-  }, cinst.inst);
+  }, qinst);
+}
+
+bool instruction_is_unitary(const Instruction& inst) {
+  return std::visit(quantumcircuit_utils::overloaded {
+    [](const QuantumInstruction& qinst) { 
+      return quantum_instruction_is_unitary(qinst);
+    },
+    [](const ClassicalInstruction& clinst) { 
+      return true;
+    }, 
+    [](const ConditionedInstruction& cinst) { 
+      return quantum_instruction_is_unitary(cinst.inst);
+    }, 
+  }, inst);
+}
+
+Instruction instruction_adjoint(const Instruction& inst) {
+  auto qinst_adjoint = [](const QuantumInstruction& qinst) {
+    return std::visit(quantumcircuit_utils::overloaded {
+      [](std::shared_ptr<Gate> gate) -> QuantumInstruction {
+        return gate->adjoint();
+      },
+      [](const FreeFermionGate& gate) -> QuantumInstruction {
+        return gate.adjoint();
+      },
+      [](const Measurement& m) -> QuantumInstruction {
+        throw std::runtime_error("Cannot return adjoint of non-unitary operations.");
+      },
+      [](const WeakMeasurement& m) -> QuantumInstruction {
+        throw std::runtime_error("Cannot return adjoint of non-unitary operations.");
+      }
+    }, qinst);
+  };
+
+  return std::visit(quantumcircuit_utils::overloaded{ 
+    [&](const QuantumInstruction& qinst) -> Instruction {
+      return qinst_adjoint(qinst);
+    },
+    [](const ClassicalInstruction& clinst) -> Instruction {
+      return clinst;
+    },
+    [&](const ConditionedInstruction& cinst) -> Instruction {
+      return ConditionedInstruction(qinst_adjoint(cinst.inst), cinst.control, cinst.target);
+    }
+  }, inst);
+}
+
+bool instruction_is_classical(const Instruction& inst) {
+  return std::visit(quantumcircuit_utils::overloaded{ 
+    [&](const QuantumInstruction& qinst) {
+      return false;
+    },
+    [](const ClassicalInstruction& clinst) {
+      return true;
+    },
+    [&](const ConditionedInstruction& cinst) {
+      return cinst.control || cinst.target;
+    }
+  }, inst);
 }

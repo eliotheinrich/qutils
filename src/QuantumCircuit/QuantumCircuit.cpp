@@ -1,4 +1,5 @@
 #include "QuantumCircuit.h"
+#include "CircuitUtils.h"
 #include "Clifford.hpp"
 #include "Instructions.hpp"
 
@@ -19,8 +20,9 @@ std::string QuantumCircuit::to_string() const {
 
 uint32_t QuantumCircuit::num_params() const {
 	uint32_t n = 0;
-	for (auto const &inst : instructions) {
-    n += std::visit(quantumcircuit_utils::overloaded {
+
+  auto qinst_num_params = [](const QuantumInstruction& qinst) {
+    return std::visit(quantumcircuit_utils::overloaded {
       [](std::shared_ptr<Gate> gate) -> uint32_t { 
         return gate->num_params(); 
       },
@@ -33,15 +35,29 @@ uint32_t QuantumCircuit::num_params() const {
       [](const WeakMeasurement& m) -> uint32_t { 
         return m.num_params(); 
       }
-    }, inst.inst);
+    }, qinst);
+  };
+
+	for (auto const &inst : instructions) {
+    n += std::visit(quantumcircuit_utils::overloaded {
+      [&qinst_num_params](const QuantumInstruction& qinst) -> uint32_t {
+        return qinst_num_params(qinst);
+      },
+      [](const ClassicalInstruction& clinst) -> uint32_t {
+        return 0;
+      },
+      [&qinst_num_params](const ConditionedInstruction& cinst) -> uint32_t {
+        return qinst_num_params(cinst.inst);
+      }
+    }, inst);
 	}
 	
 	return n;
 }
 
 bool QuantumCircuit::is_clifford() const {
-  for (auto const& inst : instructions) {
-    bool valid = std::visit(quantumcircuit_utils::overloaded {
+  auto qinst_is_clifford = [](const QuantumInstruction& qinst) {
+    return std::visit(quantumcircuit_utils::overloaded {
 			[](std::shared_ptr<Gate> gate) -> bool { 
         return gate->is_clifford(); 
       },
@@ -54,7 +70,21 @@ bool QuantumCircuit::is_clifford() const {
 			[](const WeakMeasurement& m) -> bool { 
         return false; 
       }
-		}, inst.inst);
+		}, qinst);
+  };
+
+  for (auto const& inst : instructions) {
+    bool valid = std::visit(quantumcircuit_utils::overloaded {
+			[&qinst_is_clifford](const QuantumInstruction& qinst) -> bool {
+        return qinst_is_clifford(qinst); 
+      },
+      [](const ClassicalInstruction& clinst) -> bool { 
+        return true;
+      },
+			[&qinst_is_clifford](const ConditionedInstruction& cinst) -> bool { 
+      return qinst_is_clifford(cinst.inst);
+      },
+		}, inst);
     
     if (!valid) {
       return false;
@@ -70,7 +100,7 @@ uint32_t QuantumCircuit::length() const {
 
 bool QuantumCircuit::is_unitary() const {
   for (auto const &inst : instructions) {
-    if (!instruction_is_unitary(inst.inst)) {
+    if (!instruction_is_unitary(inst)) {
       return false;
     }
   }
@@ -86,16 +116,16 @@ CircuitDAG QuantumCircuit::to_dag() const {
   std::vector<Qubits> classical_supports(length());
 
   for (size_t i = 0; i < length(); i++) {
-    const ConditionedInstruction& cinst = instructions[i];
-    dag.set_val(i, copy_instruction(cinst));
+    const Instruction& inst = instructions[i];
+    dag.set_val(i, copy_instruction(inst));
 
-    supports[i] = get_instruction_support(cinst);
+    supports[i] = get_instruction_support(inst);
 
     for (uint32_t q : supports[i]) {
       covers[q].push(i);
     }
 
-    classical_supports[i] = get_instruction_classical_support(cinst);
+    classical_supports[i] = get_instruction_classical_support(inst);
 
     for (uint32_t q : classical_supports[i]) {
       covers[q + num_qubits].push(i);
@@ -163,8 +193,8 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
   std::set<TreeEntry, PairCmp> leafs;
   for (size_t i = 0; i < dag.num_vertices; i++) {
     if (reversed_dag.degree(i) == 0) {
-      const ConditionedInstruction& cinst = dag.get_val(i);
-      uint32_t q = ltr ? std::ranges::min(get_instruction_support(cinst)) : std::ranges::max(get_instruction_support(cinst));
+      const Instruction& inst = dag.get_val(i);
+      uint32_t q = ltr ? std::ranges::min(get_instruction_support(inst)) : std::ranges::max(get_instruction_support(inst));
       leafs.emplace(i, q);
     }
   }
@@ -232,8 +262,8 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
     leafs.erase(it);
 
     for (size_t j : new_leafs) {
-      const ConditionedInstruction& cinst = dag.get_val(j);
-      uint32_t q = ltr ? std::ranges::min(get_instruction_support(cinst)) : std::ranges::max(get_instruction_support(cinst));
+      const Instruction& inst = dag.get_val(j);
+      uint32_t q = ltr ? std::ranges::min(get_instruction_support(inst)) : std::ranges::max(get_instruction_support(inst));
       leafs.emplace(j, q);
     }
 
@@ -246,23 +276,23 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
 
 
 std::optional<std::pair<size_t, size_t>> find_mergeable(const CircuitDAG& dag, const auto& reversed_dag) {
-  auto mergeable = [](const ConditionedInstruction& cinst) {
-    return instruction_is_unitary(cinst) && !cinst.target && !cinst.control;
+  auto mergeable = [](const Instruction& inst) {
+    return instruction_is_unitary(inst) && !instruction_is_classical(inst);
   };
 
   for (size_t i = 0; i < dag.num_vertices; i++) {
-    const ConditionedInstruction& cinst1 = dag.get_val(i);
-    if (!mergeable(cinst1)) {
+    const Instruction& inst1 = dag.get_val(i);
+    if (!mergeable(inst1)) {
       continue;
     }
     for (size_t j : dag.edges_of(i)) {
-      const ConditionedInstruction& cinst2 = dag.get_val(j);
-      if (!mergeable(cinst2)) {
+      const Instruction& inst2 = dag.get_val(j);
+      if (!mergeable(inst2)) {
         continue;
       }
 
-      Qubits s1 = get_instruction_support(cinst1);
-      Qubits s2 = get_instruction_support(cinst2);
+      Qubits s1 = get_instruction_support(inst1);
+      Qubits s2 = get_instruction_support(inst2);
       std::sort(s1.begin(), s1.end());
       std::sort(s2.begin(), s2.end());
 
@@ -297,19 +327,19 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
 
     merged_any = true;
     auto [i, j] = merged_pair.value();
-    const ConditionedInstruction& cinst1 = dag.get_val(i);
-    const ConditionedInstruction& cinst2 = dag.get_val(j);
+    const Instruction& inst1 = dag.get_val(i);
+    const Instruction& inst2 = dag.get_val(j);
 
     QuantumCircuit qc(num_qubits, num_cbits);
-    qc.add_instruction(cinst1);
-    qc.add_instruction(cinst2);
+    qc.add_instruction(inst1);
+    qc.add_instruction(inst2);
 
     Qubits support = qc.get_support();
     Qubits map = reduced_support(support, num_qubits);
     qc.apply_qubit_map(map);
     qc.resize_qubits(support.size());
 
-    ConditionedInstruction combined = {std::make_shared<MatrixGate>(qc.to_matrix(), support), std::nullopt, std::nullopt};
+    QuantumInstruction combined = std::make_shared<MatrixGate>(qc.to_matrix(), support);
 
     dag.set_val(i, combined);
 
@@ -343,7 +373,7 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
 }
 
 void QuantumCircuit::apply_qubit_map(const Qubits& qubits) {
-  for (auto& cinst : instructions) {
+  auto qinst_apply_map = [&](QuantumInstruction& qinst) {
 		std::visit(quantumcircuit_utils::overloaded {
 			[&qubits](std::shared_ptr<Gate> gate) {
         Qubits _qubits(gate->num_qubits);
@@ -372,19 +402,52 @@ void QuantumCircuit::apply_qubit_map(const Qubits& qubits) {
 
         m.qubits = _qubits;
       }
-		}, cinst.inst);
+		}, qinst);
+  };
+
+  for (auto& inst : instructions) {
+    std::visit(quantumcircuit_utils::overloaded{
+      [&qinst_apply_map](QuantumInstruction& qinst) {
+        qinst_apply_map(qinst);
+      },
+      [](const ClassicalInstruction& clinst) {
+
+      },
+      [&qinst_apply_map](ConditionedInstruction& cinst) {
+        qinst_apply_map(cinst.inst);
+      }
+    }, inst);
   }
 }
 
 void QuantumCircuit::apply_cbit_map(const Qubits& bits) {
-  for (auto& cinst : instructions) {
-    if (cinst.target) {
-      cinst.target = bits[cinst.target.value()];
+  auto apply_bit_map = [&bits](ClassicalInstruction& clinst) {
+    Qubits _bits(clinst.bits.size());
+    for (size_t b = 0; b < clinst.bits.size(); b++) {
+      _bits[b] = bits[clinst.bits[b]];
     }
 
-    if (cinst.control) {
-      cinst.control = bits[cinst.control.value()];
-    }
+    clinst.bits = _bits;
+  };
+
+  for (auto& inst : instructions) {
+    std::visit(quantumcircuit_utils::overloaded{
+      [](const QuantumInstruction& qinst) {
+
+      },
+      [&apply_bit_map](ClassicalInstruction& clinst) {
+        apply_bit_map(clinst);
+      },
+      [&bits](ConditionedInstruction& cinst) {
+        if (cinst.target) {
+          cinst.target = bits[cinst.target.value()];
+        }
+
+        if (cinst.control) {
+          cinst.control = bits[cinst.control.value()];
+        }
+      }
+    }, inst);
   }
 }
 
@@ -403,7 +466,7 @@ Qubits QuantumCircuit::get_support() const {
   return support_;
 }
 
-void QuantumCircuit::validate_instruction(const ConditionedInstruction& cinst) const {
+void QuantumCircuit::validate_instruction(const Instruction& inst) const {
   size_t num_qubits = this->num_qubits;
   auto validate_qubits = [num_qubits](const Qubits& qubits) {
     for (const auto q : qubits) {
@@ -413,52 +476,100 @@ void QuantumCircuit::validate_instruction(const ConditionedInstruction& cinst) c
     }
   };
 
-  std::visit(quantumcircuit_utils::overloaded {
-    [&](std::shared_ptr<Gate> gate) {
-      validate_qubits(gate->qubits);
-    },
-    [&](const FreeFermionGate& gate) { 
-      validate_qubits(gate.get_support());
-    },
-    [&](const Measurement& m) { 
-      validate_qubits(m.qubits);
-    },
-    [&](const WeakMeasurement& m) {
-      validate_qubits(m.qubits);
+  size_t num_cbits = this->num_cbits;
+  auto validate_bits = [num_cbits](const Qubits& bits) {
+    for (const auto b : bits) {
+      if (b >= num_cbits) {
+        throw std::runtime_error(fmt::format("Invalid bit {} passed to QuantumCircuit with {} classical bits.", b, num_cbits));
+      }
     }
-  }, cinst.inst);
+  };
 
-  if (cinst.control && cinst.control.value() >= num_cbits) {
-    throw std::runtime_error(fmt::format("Invalid control bit {} passed to QuantumCircuit with {} cbits.", cinst.control.value(), num_cbits));
-  }
+  auto validate_qinst = [&](const QuantumInstruction& qinst) {
+    std::visit(quantumcircuit_utils::overloaded {
+      [&](std::shared_ptr<Gate> gate) {
+        validate_qubits(gate->qubits);
+      },
+      [&](const FreeFermionGate& gate) { 
+        validate_qubits(gate.get_support());
+      },
+      [&](const Measurement& m) { 
+        validate_qubits(m.qubits);
+      },
+      [&](const WeakMeasurement& m) {
+        validate_qubits(m.qubits);
+      }
+    }, qinst);
+  };
 
-  if (cinst.target && cinst.target.value() >= num_cbits) {
-    throw std::runtime_error(fmt::format("Invalid target bit {} passed to QuantumCircuit with {} cbits.", cinst.target.value(), num_cbits));
-  }
+  std::visit(quantumcircuit_utils::overloaded {
+    [&](const QuantumInstruction& qinst) {
+      validate_qinst(qinst);
+    },
+    [&](const ClassicalInstruction& clinst) {
+      validate_bits(clinst.bits);
+    },
+    [&](const ConditionedInstruction& cinst) {
+      validate_qinst(cinst.inst);
+
+      if (cinst.control && cinst.control.value() >= num_cbits) {
+        throw std::runtime_error(fmt::format("Invalid control bit {} passed to QuantumCircuit with {} cbits.", cinst.control.value(), num_cbits));
+      }
+
+      if (cinst.target && cinst.target.value() >= num_cbits) {
+        throw std::runtime_error(fmt::format("Invalid target bit {} passed to QuantumCircuit with {} cbits.", cinst.target.value(), num_cbits));
+      }
+    }
+
+  }, inst);
 }
 
-void QuantumCircuit::add_instruction(const ConditionedInstruction& cinst) {
-  validate_instruction(cinst);
-  if (!instruction_is_unitary(cinst)) {
+void QuantumCircuit::add_instruction(const Instruction& inst) {
+  validate_instruction(inst);
+  if (!instruction_is_unitary(inst)) {
     measurement_map.push_back(length());
   }
-  instructions.push_back(cinst);
+  instructions.push_back(inst);
+}
+
+void QuantumCircuit::add_controlled_instruction(const QuantumInstruction& qinst, size_t control) {
+  add_instruction(ConditionedInstruction(qinst, control, std::nullopt));
+}
+
+void QuantumCircuit::add_targeted_instruction(const QuantumInstruction& qinst, size_t target) {
+  add_instruction(ConditionedInstruction(qinst, std::nullopt, target));
 }
 
 void QuantumCircuit::add_measurement(const Measurement& m, TargetOpt target) {
-  add_instruction(m, std::nullopt, target);
+  if (target) {
+    add_targeted_instruction(m, target.value());
+  } else {
+    add_instruction(m);
+  }
 }
 
 void QuantumCircuit::add_weak_measurement(const WeakMeasurement& m, TargetOpt target) {
-  add_instruction(m, std::nullopt, target);
+  if (target) {
+    add_targeted_instruction(m, target.value());
+  } else {
+    add_instruction(m);
+  }
 }
 
 void QuantumCircuit::add_gate(const FreeFermionGate& gate, ControlOpt control) {
-  add_instruction(gate, control, std::nullopt);
+  if (control) {
+    add_controlled_instruction(gate, control.value());
+  } else {
+    add_instruction(gate);
+  }
 }
 
 void QuantumCircuit::add_gate(const std::shared_ptr<Gate> &gate, ControlOpt control) {
-  add_instruction(gate, control, std::nullopt);
+  if (control) {
+    add_controlled_instruction(gate, control.value());
+  } else {
+    add_instruction(gate);
+  }
 }
 
 void QuantumCircuit::add_gate(const std::string& name, const Qubits& qubits, ControlOpt control) {
@@ -507,7 +618,7 @@ QuantumCircuit QuantumCircuit::bind_params(const std::vector<double>& params) co
   QuantumCircuit qc(num_qubits);
 
   uint32_t n = 0;
-  for (auto const &inst : instructions) {
+  auto bind_qinst = [&qc, &n, &params](const QuantumInstruction& qinst) {
 		std::visit(quantumcircuit_utils::overloaded {
       [&qc, &n, &params](std::shared_ptr<Gate> gate) {
         size_t N = gate->num_params();
@@ -544,7 +655,21 @@ QuantumCircuit QuantumCircuit::bind_params(const std::vector<double>& params) co
         n += N;
         qc.add_weak_measurement(m.bind_params(gate_params)); 
       }
-    }, inst.inst);
+    }, qinst);
+
+  };
+
+  for (auto const &inst : instructions) {
+    std::visit(quantumcircuit_utils::overloaded{
+      [&](const QuantumInstruction& qinst) {
+        bind_qinst(qinst);
+      },
+      [](const ClassicalInstruction& clinst) {
+      },
+      [&](const ConditionedInstruction& cinst) {
+        bind_qinst(cinst.inst);
+      }
+    }, inst);
   }
 
   return qc;
@@ -560,8 +685,7 @@ void QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>& outcomes
     throw std::runtime_error(fmt::format("Passed {} measurement outcomes to a circuit with {} measurements.", outcomes.size(), num_measurements));
   }
 
-  for (size_t i = 0; i < num_measurements; i++) {
-    size_t idx = measurement_map[i];
+  auto bind_qinst = [&](QuantumInstruction& qinst, size_t i) {
     std::visit(quantumcircuit_utils::overloaded {
       [](std::shared_ptr<Gate> gate) { 
         throw std::runtime_error("Circuit measurement map is in a bad state. This is a bug.");
@@ -575,7 +699,23 @@ void QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>& outcomes
       [&](WeakMeasurement& m) { 
         m.outcome = outcomes[i]; 
       }
-    }, instructions[idx].inst);
+    }, qinst);
+  };
+
+  for (size_t i = 0; i < num_measurements; i++) {
+    size_t idx = measurement_map[i];
+
+    std::visit(quantumcircuit_utils::overloaded {
+      [&](QuantumInstruction& qinst) {
+        bind_qinst(qinst, i);
+      },
+      [](const ClassicalInstruction& clinst) {
+        throw std::runtime_error("Circuit measurement map is in a bad state. This is a bug.");
+      },
+      [&](ConditionedInstruction& cinst) {
+        bind_qinst(cinst.inst, i);
+      }
+    }, instructions[idx]);
   }
 }
 
@@ -598,7 +738,7 @@ QuantumCircuit QuantumCircuit::adjoint(const std::optional<std::vector<double>>&
     QuantumCircuit qc(num_qubits);
 
     for (uint32_t i = 0; i < instructions.size(); i++) {
-      qc.add_instruction(instructions[instructions.size() - i - 1].adjoint());
+      qc.add_instruction(instruction_adjoint(instructions[instructions.size() - i - 1]));
     }
 
     return qc;
@@ -692,12 +832,8 @@ Eigen::MatrixXcd QuantumCircuit::to_matrix(const std::optional<std::vector<doubl
 
     uint32_t p = num_qubits;
 
-    for (uint32_t i = 0; i < instructions.size(); i++) {
-      if (instructions[i].control || instructions[i].target) {
-        throw std::runtime_error("Cannot convert a classically-conditioned or targetted instruction to matrix.");
-      }
-
-			std::visit(quantumcircuit_utils::overloaded {
+    auto qinst_to_matrix = [&Q, p](const QuantumInstruction& qinst) {
+      std::visit(quantumcircuit_utils::overloaded {
         [&Q, p](std::shared_ptr<Gate> gate) { 
           Q = embed_unitary(gate->define(), gate->qubits, p) * Q; 
         },
@@ -711,7 +847,24 @@ Eigen::MatrixXcd QuantumCircuit::to_matrix(const std::optional<std::vector<doubl
         [](const WeakMeasurement& m) { 
           throw std::invalid_argument("Cannot convert weak measurement to matrix."); 
         }
-      }, instructions[i].inst);
+      }, qinst);
+    };
+
+    for (const auto& inst : instructions) {
+			std::visit(quantumcircuit_utils::overloaded {
+        [&](const QuantumInstruction& qinst) {
+          qinst_to_matrix(qinst);
+        },
+        [](const ClassicalInstruction& clinst) {
+          throw std::runtime_error("Cannot convert a classical instruction to matrix.");
+        },
+        [&](const ConditionedInstruction& cinst) {
+          if (cinst.control || cinst.target) {
+            throw std::runtime_error("Cannot convert a classically-conditioned or targetted instruction to matrix.");
+          }
+          qinst_to_matrix(cinst.inst);
+        }
+      }, inst);
     }
 
     return Q;

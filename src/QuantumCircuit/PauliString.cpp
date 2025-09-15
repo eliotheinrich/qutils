@@ -494,7 +494,7 @@ void PauliString::evolve(const QuantumCircuit& qc) {
     throw std::runtime_error(fmt::format("Cannot evolve a Paulistring with {} qubits with a QuantumCircuit with {} qubits.", num_qubits, qc.get_num_qubits()));
   }
 
-  for (auto const &cinst : qc.instructions) {
+  auto apply_qinst = [this](const QuantumInstruction& qinst) {
     std::visit(quantumcircuit_utils::overloaded{
       [this](std::shared_ptr<Gate> gate) { 
         std::string name = gate->label();
@@ -544,7 +544,24 @@ void PauliString::evolve(const QuantumCircuit& qc) {
       [](const WeakMeasurement& m) { 
         throw std::runtime_error("Cannot do weak measurement on a single PauliString.");
       },
-    }, cinst.inst);
+    }, qinst);
+  };
+
+  for (auto const &inst : qc.instructions) {
+    std::visit(quantumcircuit_utils::overloaded{
+      [&apply_qinst](const QuantumInstruction& qinst) {
+        apply_qinst(qinst);
+      },
+      [](const ClassicalInstruction& clinst) {
+        throw std::runtime_error("Cannot do classical operation on PauliString.");
+      },
+      [&apply_qinst](const ConditionedInstruction& cinst) {
+        if (cinst.control || cinst.target) {
+          throw std::runtime_error("Cannot do classically-conditioned operation on PauliString.");
+        }
+        apply_qinst(cinst.inst);
+      }
+    }, inst);
   }
 }
 

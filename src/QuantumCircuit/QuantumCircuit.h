@@ -12,7 +12,7 @@
 
 // --- Definitions for QuantumCircuit --- //
 
-using CircuitDAG = DirectedGraph<ConditionedInstruction>;
+using CircuitDAG = DirectedGraph<Instruction>;
 
 class QuantumCircuit {
   private:
@@ -20,7 +20,7 @@ class QuantumCircuit {
     uint32_t num_cbits;
 
   public:
-    std::vector<ConditionedInstruction> instructions;
+    std::vector<Instruction> instructions;
     std::vector<size_t> measurement_map;
 
     QuantumCircuit() : num_qubits(0), num_cbits(0) {}
@@ -91,12 +91,12 @@ class QuantumCircuit {
 
     Qubits get_support() const;
 
-    void validate_instruction(const ConditionedInstruction& inst) const;
+    void validate_instruction(const Instruction& inst) const;
 
-    void add_instruction(const ConditionedInstruction& inst);
-    void add_instruction(const Instruction& inst, ControlOpt control=std::nullopt, TargetOpt target=std::nullopt) {
-      add_instruction({inst, control, target});
-    }
+    void add_instruction(const Instruction& inst);
+    void add_controlled_instruction(const QuantumInstruction& qinst, size_t control);
+    void add_targeted_instruction(const QuantumInstruction& qinst, size_t target);
+
     void add_measurement(const Measurement& m, TargetOpt target=std::nullopt);
     void add_measurement(const Qubits& qubits, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt, TargetOpt target=std::nullopt) {
       Measurement m(qubits, pauli, outcome);

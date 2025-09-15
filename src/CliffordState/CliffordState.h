@@ -18,7 +18,7 @@ class CliffordState : public QuantumState {
 
     virtual EvolveResult evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override;
     virtual EvolveResult evolve(const QuantumCircuit& qc, EvolveOpts opts=EvolveOpts()) override;
-		virtual std::optional<MeasurementData> evolve(const Instruction& inst) override;
+		virtual std::optional<MeasurementData> evolve(const QuantumInstruction& inst) override;
     virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
 
     virtual void h(uint32_t a)=0;
