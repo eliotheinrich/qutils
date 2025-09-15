@@ -4,6 +4,43 @@
 #include "QuantumState.h"
 #include "CliffordState.h"
 
+template <typename T, typename... QuantumStates>
+size_t get_num_qubits(const T& first, const QuantumStates&... args) {
+  size_t num_qubits = first.get_num_qubits();
+
+  if constexpr (sizeof...(args) == 0) {
+    return num_qubits;
+  } else {
+    if (num_qubits != get_num_qubits(args...)) {
+      throw std::runtime_error("Error; inappropriate states passed to get_num_qubits. Number of qubits do not match.");
+    }
+
+    return num_qubits;
+  }
+}
+
+template <typename T, typename V>
+bool states_close(const T& first, const V& second) {
+  DensityMatrix d1(first);
+  DensityMatrix d2(second);
+
+  if (d1.get_num_qubits() != d2.get_num_qubits()) {
+    return false;
+  }
+
+  return (d1.data - d2.data).cwiseAbs().maxCoeff() < 1e-2;
+}
+
+template <typename T, typename V, typename... Args>
+bool states_close(const T& first, const V& second, const Args&... args) {
+  if (!states_close(first, second)) {
+    return false;
+  } else {
+    return states_close(first, args...);
+  }
+}
+
+
 Qubits random_qubits(size_t num_qubits, size_t k) {
   std::minstd_rand rng(randi());
   Qubits qubits(num_qubits);
@@ -203,7 +240,6 @@ bool test_pauli() {
 bool test_parametrized_circuit() {
   constexpr size_t nqb = 6;
 
-
   for (size_t i = 0; i < 10; i++) {
     size_t num_gates = 10;
     std::vector<double> parameters(num_gates);
@@ -238,6 +274,45 @@ bool test_parametrized_circuit() {
 
     ASSERT(qc1_.to_matrix().isApprox(qc2.to_matrix()));
     ASSERT(qc1_.to_matrix().adjoint().isApprox(qc2.adjoint().to_matrix()));
+  }
+
+  return true;
+}
+
+bool test_parametrized_nonunitary() {
+  constexpr size_t nqb = 4;
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc1(nqb);
+    QuantumCircuit qc2(nqb);
+
+    size_t num_gates = 4;
+    std::vector<double> parameters(num_gates);
+    for (size_t j = 0; j < num_gates; j++) {
+      parameters[j] = randf() * M_PI;
+
+      size_t n = randi(1, nqb);
+      Qubits qubits = random_qubits(nqb, n);
+      PauliString pauli = PauliString::randh(n);
+      qc1.rp(qubits, pauli);
+      qc2.rp(qubits, pauli, parameters[j]);
+    }
+
+    size_t num_mzr = 4;
+    for (size_t j = 0; j < num_mzr; j++) {
+      size_t q = randi(0, nqb);
+      qc1.mzr(q);
+      qc2.mzr(q);
+    }
+
+    EvolveOpts opts;
+    DensityMatrix rho1(nqb);
+    QuantumCircuit qc1_bound = qc1.bind_params(parameters);
+    rho1.evolve(qc1_bound, opts);
+
+    DensityMatrix rho2(nqb);
+    rho2.evolve(qc2, opts);
+
+    ASSERT(states_close(rho1, rho2));
   }
 
   return true;
@@ -301,10 +376,8 @@ bool test_random_conditioned_operation() {
 
     EvolveOpts opts;
     opts.return_measurement_outcomes = true;
-    opts.simplify_circuit = true;
+    opts.simplify_circuit = false;
 
-    // TODO ensure that outcomes are matched to correct measurements, even when order is not preserved 
-    // due to DAG contraction/reordering 
     Statevector psi1(nqb);
     auto results1 = std::get<std::vector<bool>>(psi1.evolve(qc, opts).value());
 
@@ -439,6 +512,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_qc_simplify);
   ADD_TEST(test_pauli);
   ADD_TEST(test_parametrized_circuit);
+  ADD_TEST(test_parametrized_nonunitary);
   ADD_TEST(test_conditioned_operation);
   ADD_TEST(test_random_conditioned_operation);
   ADD_TEST(test_adam);

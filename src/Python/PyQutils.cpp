@@ -170,6 +170,7 @@ NB_MODULE(qutils_bindings, m) {
     .def("num_params", &QuantumCircuit::num_params)
     .def("bind_params", &QuantumCircuit::bind_params)
     .def("bind_measurement_outcomes", &QuantumCircuit::bind_measurement_outcomes)
+    .def("get_measurement_map", &QuantumCircuit::get_measurement_map)
     .def("length", &QuantumCircuit::length)
     .def("mzr", [](QuantumCircuit& self, uint32_t q, TargetOpt target) { 
       self.mzr(q, target);
@@ -349,18 +350,23 @@ NB_MODULE(qutils_bindings, m) {
     .def("normalize", &Statevector::normalize)
     .def("inner", &Statevector::inner)
     .def("expectation_m", [](Statevector& self, const Eigen::MatrixXcd& m, const std::vector<uint32_t>& qubits) { return self.expectation(m, qubits); })
-    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
+        std::cout << "Entering SV.evolve\n";
       if (params) {
-        self.evolve(qc, EvolveOpts(params.value())); 
+        std::cout << "Found params\n";
+        return self.evolve(qc, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc);
+        std::cout << "Did not find params\n";
+        auto result = self.evolve(qc);
+        std::cout << "Finished getting result\n";
+        return result;
       }
     }, "circuit"_a, "params"_a=nanobind::none())
-    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, qubits, EvolveOpts(params.value())); 
+        return self.evolve(qc, qubits, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc, qubits);
+        return self.evolve(qc, qubits);
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("evolve", [](Statevector& self, const Eigen::Matrix2cd& gate, uint32_t q) { self.evolve(gate, q); })
@@ -375,18 +381,18 @@ NB_MODULE(qutils_bindings, m) {
     })
     .def_ro("data", &DensityMatrix::data)
     .def("expectation_matrix", [](DensityMatrix& self, const Eigen::MatrixXcd& m, const std::vector<uint32_t>& qubits) { return self.expectation(m, qubits); })
-    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, EvolveOpts(params.value())); 
+        return self.evolve(qc, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc);
+        return self.evolve(qc);
       }
     }, "circuit"_a, "params"_a=nanobind::none())
-    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, qubits, EvolveOpts(params.value())); 
+        return self.evolve(qc, qubits, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc, qubits);
+        return self.evolve(qc, qubits);
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("evolve", [](DensityMatrix& self, const Eigen::Matrix2cd& gate, uint32_t q) { self.evolve(gate, q); })
@@ -423,18 +429,18 @@ NB_MODULE(qutils_bindings, m) {
     .def("concatenate", &MatrixProductState::concatenate)
     .def("conjugate", &MatrixProductState::conjugate)
     .def("inner", &MatrixProductState::inner)
-    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, EvolveOpts(params.value())); 
+        return self.evolve(qc, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc);
+        return self.evolve(qc);
       }
     }, "circuit"_a, "params"_a=nanobind::none())
-    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, qubits, EvolveOpts(params.value())); 
+        return self.evolve(qc, qubits, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc, qubits);
+        return self.evolve(qc, qubits);
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("evolve", [](MatrixProductState& self, const Eigen::Matrix2cd& gate, uint32_t q) { self.evolve(gate, q); })
@@ -453,19 +459,19 @@ NB_MODULE(qutils_bindings, m) {
     .def("__setstate__", [](QuantumCHPState& self, const nanobind::bytes& bytes) { 
       new (&self) QuantumCHPState();
       self.deserialize(convert_bytes(bytes)); })
-    .def("tableau", [](QuantumCHPState& self) { return self.tableau.to_matrix(); })
-    .def("evolve", [](QuantumCHPState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("tableau", [](QuantumCHPState& self) { return self.tableau->to_matrix(); })
+    .def("evolve", [](QuantumCHPState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, EvolveOpts(params.value())); 
+        return self.evolve(qc, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc);
+        return self.evolve(qc);
       }
     }, "circuit"_a, "params"_a=nanobind::none())
-    .def("evolve", [](QuantumCHPState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](QuantumCHPState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, qubits, EvolveOpts(params.value())); 
+        return self.evolve(qc, qubits, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc, qubits);
+        return self.evolve(qc, qubits);
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("stabilizers", [](const QuantumCHPState& self) { return self.stabilizers(); })
@@ -484,7 +490,7 @@ NB_MODULE(qutils_bindings, m) {
         }
     })
     .def("mzr_deterministic", [](const QuantumCHPState& self, size_t i) {
-      auto [det, _] = self.tableau.mzr_deterministic(i);
+      auto [det, _] = self.tableau->mzr_deterministic(i);
       return det;
     })
     .def("rref", &QuantumCHPState::rref)
@@ -573,18 +579,18 @@ NB_MODULE(qutils_bindings, m) {
       new (&self) GaussianState();
       self.deserialize(convert_bytes(bytes)); 
     })
-    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, EvolveOpts(params.value())); 
+        return self.evolve(qc, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc);
+        return self.evolve(qc);
       }
     }, "circuit"_a, "params"_a=nanobind::none())
-    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) { 
+    .def("evolve", [](MagicQuantumState& self, const QuantumCircuit& qc, const Qubits& qubits, std::optional<std::map<std::string, Parameter>> params) -> EvolveResult { 
       if (params) {
-        self.evolve(qc, qubits, EvolveOpts(params.value())); 
+        return self.evolve(qc, qubits, EvolveOpts(params.value())); 
       } else {
-        self.evolve(qc, qubits);
+        return self.evolve(qc, qubits);
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("num_particles", &GaussianState::num_particles)

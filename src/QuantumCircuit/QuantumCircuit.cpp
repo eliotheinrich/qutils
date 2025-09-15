@@ -370,6 +370,7 @@ std::optional<std::pair<size_t, size_t>> find_mergeable(const CircuitDAG& dag, c
 }
 
 QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
+  std::cout << fmt::format("Before simplify: \n{}\nmap = {}\n", to_string(), measurement_map);
   CircuitDAG dag = to_dag();
   auto reversed_dag = make_reversed_dag(dag);
 
@@ -421,6 +422,8 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
     reversed_dag.remove_vertex(j);
   }
 
+  auto CIRC = to_circuit(dag, num_qubits, num_cbits, measurement_map, ltr);
+  std::cout << fmt::format("Before simplify: \n{}\nmap = {}\n", CIRC.to_string(), CIRC.measurement_map);
   return to_circuit(dag, num_qubits, num_cbits, measurement_map, ltr);
 }
 
@@ -540,7 +543,7 @@ void QuantumCircuit::add_gate(const FreeFermionGate& gate, ControlOpt control) {
 }
 
 void QuantumCircuit::add_gate(const std::shared_ptr<Gate> &gate, ControlOpt control) {
-  add_instruction(gate, control, std::nullopt);
+  add_instruction(gate->clone(), control, std::nullopt);
 }
 
 void QuantumCircuit::add_gate(const std::string& name, const Qubits& qubits, ControlOpt control) {
@@ -652,10 +655,10 @@ void QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>& outcomes
         throw std::runtime_error("Circuit measurement map is in a bad state. This is a bug.");
       },
       [&](Measurement& m) { 
-        m.outcome = outcomes[i]; 
+        m.outcome = outcomes[idx]; 
       },
       [&](WeakMeasurement& m) { 
-        m.outcome = outcomes[i]; 
+        m.outcome = outcomes[idx]; 
       }
     }, instructions[idx].inst);
   }

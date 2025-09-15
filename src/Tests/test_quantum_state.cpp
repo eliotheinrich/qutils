@@ -7,6 +7,21 @@
 
 #define MPS_DEBUG_LEVEL 1
 
+template <typename T, typename... QuantumStates>
+size_t get_num_qubits(const T& first, const QuantumStates&... args) {
+  size_t num_qubits = first.get_num_qubits();
+
+  if constexpr (sizeof...(args) == 0) {
+    return num_qubits;
+  } else {
+    if (num_qubits != get_num_qubits(args...)) {
+      throw std::runtime_error("Error; inappropriate states passed to get_num_qubits. Number of qubits do not match.");
+    }
+
+    return num_qubits;
+  }
+}
+
 template <typename T, typename V>
 bool states_close(const T& first, const V& second) {
   DensityMatrix d1(first);
@@ -25,21 +40,6 @@ bool states_close(const T& first, const V& second, const Args&... args) {
     return false;
   } else {
     return states_close(first, args...);
-  }
-}
-
-template <typename T, typename... QuantumStates>
-size_t get_num_qubits(const T& first, const QuantumStates&... args) {
-  size_t num_qubits = first.get_num_qubits();
-
-  if constexpr (sizeof...(args) == 0) {
-    return num_qubits;
-  } else {
-    if (num_qubits != get_num_qubits(args...)) {
-      throw std::runtime_error("Error; inappropriate states passed to get_num_qubits. Number of qubits do not match.");
-    }
-
-    return num_qubits;
   }
 }
 

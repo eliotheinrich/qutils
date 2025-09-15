@@ -280,6 +280,9 @@ MeasurementData DensityMatrix::mzr(uint32_t q, std::optional<bool> outcome_opt) 
         }
       }
     }
+    
+    // Return outcome of 0 by default
+    return {0, mzr_prob(q, false)};
   }
 }
 

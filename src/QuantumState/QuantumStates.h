@@ -45,10 +45,13 @@ using Parameter = std::variant<std::string, double, int>;
 
 template <typename T>
 T get(const std::map<std::string, Parameter>& params, std::string key, const T& default_value) {
+    std::cout << fmt::format("Looking for key = {}\n", key);
   if (params.contains(key)) {
-    return default_value;
-  } else {
+    std::cout << "Found key\n";
     return std::get<T>(params.at(key));
+  } else {
+    std::cout << "Did not find key\n";
+    return default_value;
   }
 }
 
@@ -61,6 +64,7 @@ struct EvolveOpts {
   {}
 
   EvolveOpts(const std::map<std::string, Parameter>& params) {
+    std::cout << "Entering EvolveOpts constructor\n";
     return_measurement_outcomes = get<int>(params, "return_measurement_outcomes", false);   
     return_measurement_probabilities = get<int>(params, "return_measurement_probabilities", false);   
     simplify_circuit = get<int>(params, "simplify_circuit", true);
