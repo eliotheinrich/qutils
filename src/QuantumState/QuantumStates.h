@@ -46,9 +46,9 @@ using Parameter = std::variant<std::string, double, int>;
 template <typename T>
 T get(const std::map<std::string, Parameter>& params, std::string key, const T& default_value) {
   if (params.contains(key)) {
-    return default_value;
-  } else {
     return std::get<T>(params.at(key));
+  } else {
+    return default_value;
   }
 }
 
