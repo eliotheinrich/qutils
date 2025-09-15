@@ -249,7 +249,7 @@ bool test_conditioned_operation() {
   for (size_t i = 0; i < 20; i++) {
     QuantumCircuit qc(nqb, nqb);
 
-    for (size_t q = 0; q < nqb; q++) {
+    for (uint32_t q = 0; q < nqb; q++) {
       qc.h(q);
       qc.mzr(q, q);
       qc.add_gate("x", {q}, q);
