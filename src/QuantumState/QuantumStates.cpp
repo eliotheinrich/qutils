@@ -261,11 +261,8 @@ EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts
   // Preparing reversed measurement_map
   size_t num_measurements = circuit.get_num_measurements();
   std::vector<MeasurementData> measurements(num_measurements);
-  std::map<size_t, size_t> reversed_map;
   std::vector<size_t> measurement_map = circuit.get_measurement_map();
-  for (size_t i = 0; i < num_measurements; i++) {
-    reversed_map[measurement_map[i]] = i;
-  }
+  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);
 
   for (size_t i = 0; i < circuit.length(); i++) {
     const auto& cinst = circuit.instructions[i];
