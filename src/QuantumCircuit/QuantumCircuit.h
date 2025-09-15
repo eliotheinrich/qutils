@@ -27,8 +27,9 @@ class QuantumCircuit {
 
     QuantumCircuit(uint32_t num_qubits, uint32_t num_cbits=0) : num_qubits(num_qubits), num_cbits(num_cbits) {}
 
-    QuantumCircuit(const QuantumCircuit& qc) : num_qubits(qc.num_qubits), num_cbits(qc.num_cbits), measurement_map(qc.measurement_map) { 
+    QuantumCircuit(const QuantumCircuit& qc) : num_qubits(qc.num_qubits), num_cbits(qc.num_cbits) { 
       append(qc); 
+      measurement_map = qc.measurement_map;
     };
 
     CircuitDAG to_dag() const;
