@@ -231,6 +231,12 @@ class QuantumCircuit {
 
     void random_clifford(const Qubits& qubits);
 
+    void cl_not(uint32_t a);
+    void cl_and(uint32_t a, uint32_t b);
+    void cl_or(uint32_t a, uint32_t b);
+    void cl_xor(uint32_t a, uint32_t b);
+    void cl_nand(uint32_t a, uint32_t b);
+
     void append(const QuantumCircuit& other);
     void append(const QuantumCircuit& other, const Qubits& qubits);
     void append(const Instruction& inst, ControlOpt control=std::nullopt);

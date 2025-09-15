@@ -365,8 +365,6 @@ bool test_random_conditioned_operation() {
     opts.return_measurement_outcomes = true;
     opts.simplify_circuit = true;
 
-    // TODO ensure that outcomes are matched to correct measurements, even when order is not preserved 
-    // due to DAG contraction/reordering 
     Statevector psi1(nqb);
     auto results1 = std::get<std::vector<bool>>(psi1.evolve(qc, opts).value());
 
@@ -482,6 +480,32 @@ bool test_adam() {
   return true;
 }
 
+bool test_classical_circuit() {
+  constexpr size_t nqb = 8;
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc(nqb, nqb);
+
+    Qubits sites = random_qubits(nqb, nqb/2);
+    for (auto q : sites) {
+      qc.cl_not(q);
+    }
+
+    for (uint32_t q = 0; q < nqb; q++) {
+      qc.add_gate("x", {q}, q);
+    }
+
+    Statevector psi(qc);
+    for (size_t q = 0; q < nqb; q++) {
+      double expectation = (std::find(sites.begin(), sites.end(), q) == sites.end()) ? 1.0 : -1.0;
+      PauliString Z(nqb);
+      Z.set_z(q, 1);
+      ASSERT(is_close(psi.expectation(Z), expectation));
+    }
+  }
+
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   std::map<std::string, TestResult> tests;
   std::set<std::string> test_names;
@@ -508,6 +532,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_simplify_cbits);
   ADD_TEST(test_dag_ltr);
   ADD_TEST(test_simplify_deep);
+  ADD_TEST(test_classical_circuit);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

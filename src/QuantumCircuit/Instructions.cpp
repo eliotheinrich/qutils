@@ -825,3 +825,17 @@ bool instruction_is_classical(const Instruction& inst) {
     }
   }, inst);
 }
+
+bool instruction_is_quantum(const Instruction& inst) {
+  return std::visit(quantumcircuit_utils::overloaded{ 
+    [&](const QuantumInstruction& qinst) {
+      return true;
+    },
+    [](const ClassicalInstruction& clinst) {
+      return false;
+    },
+    [&](const ConditionedInstruction& cinst) {
+      return true;
+    }
+  }, inst);
+}

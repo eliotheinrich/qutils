@@ -165,7 +165,7 @@ CircuitDAG QuantumCircuit::to_dag() const {
   return dag;
 }
 
-using TreeEntry = std::pair<size_t, uint32_t>;
+using TreeEntry = std::pair<size_t, int>;
 
 // Comparator: sort pairs <nodeIndex, leftmostQubit>
 struct PairCmp {
@@ -194,8 +194,12 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
   for (size_t i = 0; i < dag.num_vertices; i++) {
     if (reversed_dag.degree(i) == 0) {
       const Instruction& inst = dag.get_val(i);
-      uint32_t q = ltr ? std::ranges::min(get_instruction_support(inst)) : std::ranges::max(get_instruction_support(inst));
-      leafs.emplace(i, q);
+      if (!instruction_is_quantum(inst)) {
+        leafs.emplace(i, ltr ? 0 : num_qubits);  
+      } else {
+        uint32_t q = ltr ? std::ranges::min(get_instruction_support(inst)) : std::ranges::max(get_instruction_support(inst));
+        leafs.emplace(i, q);
+      }
     }
   }
 
@@ -368,7 +372,7 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
     dag.remove_vertex(j);
     reversed_dag.remove_vertex(j);
   }
-
+  
   return to_circuit(dag, num_qubits, num_cbits, measurement_map, ltr);
 }
 
@@ -587,6 +591,26 @@ void QuantumCircuit::add_gate(const Eigen::MatrixXcd& gate, const Qubits& qubits
 void QuantumCircuit::add_gate(const Eigen::Matrix2cd& gate, uint32_t qubit, ControlOpt control) {
   Qubits qubits{qubit};
   add_gate(gate, qubits, control);
+}
+
+void QuantumCircuit::cl_not(uint32_t a) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::NOT, {a}});
+}
+
+void QuantumCircuit::cl_and(uint32_t a, uint32_t b) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::AND, {a, b}});
+}
+
+void QuantumCircuit::cl_or(uint32_t a, uint32_t b) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::OR, {a, b}});
+}
+
+void QuantumCircuit::cl_xor(uint32_t a, uint32_t b) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::XOR, {a, b}});
+}
+
+void QuantumCircuit::cl_nand(uint32_t a, uint32_t b) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::NAND, {a, b}});
 }
 
 void QuantumCircuit::append(const QuantumCircuit& other) {

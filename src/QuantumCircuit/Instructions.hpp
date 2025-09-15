@@ -620,7 +620,7 @@ struct fmt::formatter<ClassicalInstruction> {
 
   template <typename FormatContext>
   auto format(const ClassicalInstruction& clinst, FormatContext& ctx) const {
-    return fmt::format_to(ctx.out(), "{} ", clinst.to_string());
+    return fmt::format_to(ctx.out(), "{}", clinst.to_string());
   }
 };
 
@@ -676,3 +676,4 @@ Qubits get_instruction_classical_support(const Instruction& inst);
 bool instruction_is_unitary(const Instruction& inst);
 Instruction instruction_adjoint(const Instruction& inst);
 bool instruction_is_classical(const Instruction& inst);
+bool instruction_is_quantum(const Instruction& inst);
