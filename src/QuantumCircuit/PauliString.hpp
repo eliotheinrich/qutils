@@ -10,8 +10,6 @@
 #include "CircuitUtils.h"
 #include "Random.hpp"
 
-//#include "QuantumCircuit.h"
-
 class QuantumCircuit;
 
 template <typename T>
@@ -93,8 +91,6 @@ constexpr char pauli_to_char(Pauli p) {
   } else if (p == Pauli::Z) {
     return 'Z';
   }
-
-  throw std::runtime_error("Unreachable.");
 }
 
 constexpr std::complex<double> sign_from_bits(uint8_t phase) {
@@ -434,6 +430,8 @@ class PauliString {
       }
     }
 };
+
+using SparsePauliObs = std::vector<std::pair<std::complex<double>, PauliString>>;
 
 namespace fmt {
   template <>

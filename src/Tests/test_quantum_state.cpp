@@ -1667,6 +1667,40 @@ bool test_chp_probs() {
   return true;
 }
 
+bool test_sparse_pauli_obs() {
+  constexpr size_t nqb = 6;
+  for (size_t i = 0; i < 10; i++) {
+    Statevector psi(nqb);
+    DensityMatrix rho(nqb);
+    MatrixProductState mps(nqb, 1u << nqb);
+
+    randomize_state_haar(psi, rho, mps);
+
+    constexpr size_t num_terms = 10;
+    SparsePauliObs obs;
+    std::complex<double> c1_psi = 0.0;
+    std::complex<double> c1_rho = 0.0;
+    std::complex<double> c1_mps = 0.0;
+    for (size_t j = 0; j < num_terms; j++) {
+      PauliString P = PauliString::randh(nqb);
+      std::complex<double> a(randf(), randf());
+      obs.push_back({a, P});
+
+      c1_psi += a*psi.expectation(P);
+      c1_rho += a*rho.expectation(P);
+      c1_mps += a*mps.expectation(P);
+    }
+
+    std::complex<double> c2_psi = psi.QuantumState::expectation(obs);
+    std::complex<double> c2_rho = rho.QuantumState::expectation(obs);
+    std::complex<double> c2_mps = mps.QuantumState::expectation(obs);
+
+    ASSERT(is_close(c1_psi, c2_psi, c1_rho, c2_rho, c1_mps, c2_mps));
+  }
+
+  return true;
+}
+
 using TestResult = std::tuple<bool, int>;
 
 #define ADD_TEST(x)                                                               \
@@ -1709,8 +1743,6 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_projector);
   ADD_TEST(test_mpo_sample_paulis);
   ADD_TEST(test_mpo_sample_paulis_montecarlo);
-  //ADD_TEST(test_stabilizer_entropy_sampling);
-  //ADD_TEST(test_participation_entropy_sampling);
   ADD_TEST(test_mps_ising_model);
   ADD_TEST(test_mps_random_clifford);
   ADD_TEST(test_mps_conjugate);
@@ -1729,6 +1761,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_bitstring_expectation);
   ADD_TEST(test_sv_entanglement);
   ADD_TEST(test_measurement_record);
+  ADD_TEST(test_sparse_pauli_obs);
   //ADD_TEST(test_chp_probs);
 
   constexpr char green[] = "\033[1;32m";

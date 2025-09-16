@@ -79,6 +79,15 @@ std::vector<std::vector<double>> QuantumState::partial_probabilities(const std::
   return partials;
 }
 
+std::complex<double> QuantumState::expectation(const SparsePauliObs& obs) const {
+  std::complex<double> c = 0.0;
+  for (const auto& [a, P] : obs) {
+    c += a*expectation(P);
+  }
+
+  return c;
+}
+
 double QuantumState::expectation(const BitString& bits, std::optional<QubitSupport> support) const {
   auto probs = probabilities();
   return probs[bits.to_integer()];
