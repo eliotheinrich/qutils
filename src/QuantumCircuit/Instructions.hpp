@@ -434,7 +434,7 @@ class FreeFermionGate {
     Eigen::MatrixXcd to_matrix() const;
     std::shared_ptr<Gate> to_gate() const;
 
-    FreeFermionGate bind_params(const std::vector<double>& params) const;
+    FreeFermionGate bind_parameters(const std::vector<double>& params) const;
 
     void apply_qubit_map(const Qubits& qubits);
 
@@ -472,7 +472,7 @@ struct WeakMeasurement {
 
   WeakMeasurement(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
   size_t num_params() const;
-  WeakMeasurement bind_params(const std::vector<double>& beta) const;
+  WeakMeasurement bind_parameters(const std::vector<double>& beta) const;
   PauliString get_pauli() const;
   bool is_basis() const;
   bool is_forced() const;
@@ -482,7 +482,7 @@ struct WeakMeasurement {
 using QuantumInstruction = std::variant<std::shared_ptr<Gate>, FreeFermionGate, Measurement, WeakMeasurement>;
 
 struct ClassicalInstruction {
-  enum class OpType { NOT, AND, OR, XOR, NAND };
+  enum class OpType { NOT, AND, OR, XOR, NAND, CLEAR };
   OpType op;
   std::vector<uint32_t> bits;
 
@@ -490,47 +490,47 @@ struct ClassicalInstruction {
     switch (op) {
       case OpType::NOT: {
         bool b = target.get(bits[0]);
-        target.set(bits[0], !b);
+        target.set(bits[1], !b);
         break;
-      }
-      case OpType::AND: {
+      } case OpType::AND: {
         bool b1 = target.get(bits[0]);
         bool b2 = target.get(bits[1]);
-        target.set(bits[0], b1 && b2);
+        target.set(bits[2], b1 && b2);
         break;
-      }
-      case OpType::OR: {
+      } case OpType::OR: {
         bool b1 = target.get(bits[0]);
         bool b2 = target.get(bits[1]);
-        target.set(bits[0], b1 || b2);
+        target.set(bits[2], b1 || b2);
         break;
-      }
-      case OpType::XOR: {
+      } case OpType::XOR: {
         bool b1 = target.get(bits[0]);
         bool b2 = target.get(bits[1]);
-        target.set(bits[0], b1 ^ b2);
+        target.set(bits[2], b1 ^ b2);
         break;
-      }
-      case OpType::NAND: {
+      } case OpType::NAND: {
         bool b1 = target.get(bits[0]);
         bool b2 = target.get(bits[1]);
-        target.set(bits[0], !(b1 && b2));
+        target.set(bits[2], !(b1 && b2));
         break;
+      } case OpType::CLEAR: {
+        target.set(bits[0], 0);
       }
     }
   }
 
   std::string to_string() const {
-    if (op == OpType::NOT) {
-      return fmt::format("NOT {}", bits[0]);
-    } else if (op == OpType::AND) {
-      return fmt::format("AND {} {}", bits[0], bits[1]);
-    } else if (op == OpType::OR) {
-      return fmt::format("OR {} {}", bits[0], bits[1]);
-    } else if (op == OpType::XOR) {
-      return fmt::format("OR {} {}", bits[0], bits[1]);
-    } else if (op == OpType::NAND) {
-      return fmt::format("NAND {} {}", bits[0], bits[1]);
+    switch (op) {
+      case (OpType::NOT): {
+        return fmt::format("NOT {} {}", bits[0], bits[1]);
+      } case (OpType::AND): {
+        return fmt::format("AND {} {} {}", bits[0], bits[1], bits[2]);
+      } case (OpType::OR): {
+        return fmt::format("OR {} {} {}", bits[0], bits[1], bits[2]);
+      } case (OpType::XOR): {
+        return fmt::format("OR {} {} {}", bits[0], bits[1], bits[2]);
+      } case (OpType::CLEAR): {
+        return fmt::format("CLEAR {}", bits[0]);
+      }
     }
   }
 };

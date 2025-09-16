@@ -593,24 +593,28 @@ void QuantumCircuit::add_gate(const Eigen::Matrix2cd& gate, uint32_t qubit, Cont
   add_gate(gate, qubits, control);
 }
 
-void QuantumCircuit::cl_not(uint32_t a) {
-  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::NOT, {a}});
+void QuantumCircuit::cl_not(uint32_t control, uint32_t target) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::NOT, {control, target}});
 }
 
-void QuantumCircuit::cl_and(uint32_t a, uint32_t b) {
-  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::AND, {a, b}});
+void QuantumCircuit::cl_and(uint32_t control1, uint32_t control2, uint32_t target) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::AND, {control1, control2, target}});
 }
 
-void QuantumCircuit::cl_or(uint32_t a, uint32_t b) {
-  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::OR, {a, b}});
+void QuantumCircuit::cl_or(uint32_t control1, uint32_t control2, uint32_t target) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::OR, {control1, control2, target}});
 }
 
-void QuantumCircuit::cl_xor(uint32_t a, uint32_t b) {
-  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::XOR, {a, b}});
+void QuantumCircuit::cl_xor(uint32_t control1, uint32_t control2, uint32_t target) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::XOR, {control1, control2, target}});
 }
 
-void QuantumCircuit::cl_nand(uint32_t a, uint32_t b) {
-  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::NAND, {a, b}});
+void QuantumCircuit::cl_nand(uint32_t control1, uint32_t control2, uint32_t target) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::NAND, {control1, control2, target}});
+}
+
+void QuantumCircuit::cl_clear(uint32_t target) {
+  add_instruction(ClassicalInstruction{ClassicalInstruction::OpType::CLEAR, {target}});
 }
 
 void QuantumCircuit::append(const QuantumCircuit& other) {
@@ -634,9 +638,9 @@ void QuantumCircuit::append(const QuantumCircuit& other, const Qubits& qubits) {
   append(qc_extended);
 }
 
-QuantumCircuit QuantumCircuit::bind_params(const std::vector<double>& params) const {
+QuantumCircuit QuantumCircuit::bind_parameters(const std::vector<double>& params) const {
   if (params.size() != num_params()) {
-    throw std::invalid_argument("Invalid number of parameters passed to bind_params.");
+    throw std::invalid_argument("Invalid number of parameters passed to bind_parameters.");
   }
 
   QuantumCircuit qc(num_qubits);
@@ -664,7 +668,7 @@ QuantumCircuit QuantumCircuit::bind_params(const std::vector<double>& params) co
         }
 
         n += N;
-        qc.add_gate(gate.bind_params(gate_params));
+        qc.add_gate(gate.bind_parameters(gate_params));
       },
       [&qc](const Measurement& m) { 
         qc.add_measurement(m); 
@@ -677,7 +681,7 @@ QuantumCircuit QuantumCircuit::bind_params(const std::vector<double>& params) co
         }
 
         n += N;
-        qc.add_weak_measurement(m.bind_params(gate_params)); 
+        qc.add_weak_measurement(m.bind_parameters(gate_params)); 
       }
     }, qinst);
 
@@ -699,11 +703,9 @@ QuantumCircuit QuantumCircuit::bind_params(const std::vector<double>& params) co
   return qc;
 }
 
-size_t QuantumCircuit::get_num_measurements() const {
-  return measurement_map.size();
-}
+QuantumCircuit QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>& outcomes) const {
+  QuantumCircuit qc(*this);
 
-void QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>& outcomes) {
   size_t num_measurements = get_num_measurements();
   if (outcomes.size() != num_measurements) {
     throw std::runtime_error(fmt::format("Passed {} measurement outcomes to a circuit with {} measurements.", outcomes.size(), num_measurements));
@@ -739,8 +741,14 @@ void QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>& outcomes
       [&](ConditionedInstruction& cinst) {
         bind_qinst(cinst.inst, i);
       }
-    }, instructions[idx]);
+    }, qc.instructions[idx]);
   }
+
+  return qc;
+}
+
+size_t QuantumCircuit::get_num_measurements() const {
+  return measurement_map.size();
 }
 
 void QuantumCircuit::random_clifford(const Qubits& qubits) {
@@ -756,7 +764,7 @@ QuantumCircuit QuantumCircuit::adjoint(const std::optional<std::vector<double>>&
       throw std::invalid_argument("Unbound parameters; adjoint cannot be defined.");
     }
 
-    QuantumCircuit qc = bind_params(params);
+    QuantumCircuit qc = bind_parameters(params);
     return qc.adjoint();
   } else if (!params_passed && num_params() == 0) { // No parameters to bind; go ahead and build adjoint
     QuantumCircuit qc(num_qubits);
@@ -841,7 +849,7 @@ Eigen::MatrixXcd QuantumCircuit::to_matrix(const std::optional<std::vector<doubl
       throw std::invalid_argument("Too many parameters passed; cannot convert circuit to matrix.");
     }
 
-    QuantumCircuit qc = bind_params(params);
+    QuantumCircuit qc = bind_parameters(params);
     return qc.to_matrix();
   } else {
     if (nparams > 0) {

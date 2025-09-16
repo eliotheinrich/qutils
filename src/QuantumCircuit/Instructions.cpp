@@ -460,7 +460,7 @@ std::string FreeFermionGate::label() const {
   return fmt::format("MG{}", suffix);
 }
 
-FreeFermionGate FreeFermionGate::bind_params(const std::vector<double>& params) const {
+FreeFermionGate FreeFermionGate::bind_parameters(const std::vector<double>& params) const {
   if (params.size() != 1) {
     throw std::runtime_error("Must provide exactly one parameter to FreeFermionGate.");
   }
@@ -536,7 +536,7 @@ Qubits FreeFermionGate::get_support() const {
 
 std::shared_ptr<Gate> FreeFermionGate::to_gate() const {
   if (!t) {
-    throw std::runtime_error("Cannot convert a FreeFermionGate with unbound parameter to a matrix. Call bind_params([t]) first.");
+    throw std::runtime_error("Cannot convert a FreeFermionGate with unbound parameter to a matrix. Call bind_parameters([t]) first.");
   }
 
 
@@ -673,7 +673,7 @@ size_t WeakMeasurement::num_params() const {
   return beta ? 0 : 1;
 }
 
-WeakMeasurement WeakMeasurement::bind_params(const std::vector<double>& params) const {
+WeakMeasurement WeakMeasurement::bind_parameters(const std::vector<double>& params) const {
   if (params.size() != 1) {
     throw std::runtime_error("Weak measurements accept exactly one parameter.");
   }

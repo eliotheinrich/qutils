@@ -270,16 +270,24 @@ MeasurementData DensityMatrix::mzr(uint32_t q, std::optional<bool> outcome_opt) 
     double prob_outcome = outcome ? (1.0 - prob_zero) : prob_zero;
     return {outcome, prob_outcome};
   } else {
+    // TODO check
+    double p = 0.0;
     for (uint32_t i = 0; i < basis; i++) {
       for (uint32_t j = 0; j < basis; j++) {
         uint32_t q1 = (i >> q) & 1u;
         uint32_t q2 = (j >> q) & 1u;
+
+        if (q1 == 0) {
+          p += std::abs(data(i, i));
+        }
 
         if (q1 != q2) {
           data(i, j) = 0;
         }
       }
     }
+
+    return {0.0, p};
   }
 }
 

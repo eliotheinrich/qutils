@@ -231,22 +231,23 @@ class QuantumCircuit {
 
     void random_clifford(const Qubits& qubits);
 
-    void cl_not(uint32_t a);
-    void cl_and(uint32_t a, uint32_t b);
-    void cl_or(uint32_t a, uint32_t b);
-    void cl_xor(uint32_t a, uint32_t b);
-    void cl_nand(uint32_t a, uint32_t b);
+    void cl_not(uint32_t control, uint32_t target);
+    void cl_and(uint32_t control1, uint32_t control2, uint32_t target);
+    void cl_or(uint32_t control1, uint32_t control2, uint32_t target);
+    void cl_xor(uint32_t control1, uint32_t control2, uint32_t target);
+    void cl_nand(uint32_t control1, uint32_t control2, uint32_t target);
+    void cl_clear(uint32_t target);
 
     void append(const QuantumCircuit& other);
     void append(const QuantumCircuit& other, const Qubits& qubits);
     void append(const Instruction& inst, ControlOpt control=std::nullopt);
 
-    QuantumCircuit bind_params(const std::vector<double>& params) const;
+    QuantumCircuit bind_parameters(const std::vector<double>& params) const;
+    QuantumCircuit bind_measurement_outcomes(const std::vector<bool>& outcomes) const;
     size_t get_num_measurements() const;
     std::vector<size_t> get_measurement_map() const {
       return measurement_map;
     }
-    void bind_measurement_outcomes(const std::vector<bool>& outcomes);
 
     QuantumCircuit adjoint(const std::optional<std::vector<double>>& params_opt=std::nullopt) const;
     QuantumCircuit reverse() const;

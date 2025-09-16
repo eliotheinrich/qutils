@@ -164,12 +164,13 @@ NB_MODULE(qutils_bindings, m) {
 
   nanobind::class_<QuantumCircuit>(m, "QuantumCircuit")
     .def(nanobind::init<uint32_t>())
+    .def(nanobind::init<uint32_t, uint32_t>())
     .def(nanobind::init<QuantumCircuit&>())
     .def_ro("measurement_map", &QuantumCircuit::measurement_map)
     .def("num_qubits", &QuantumCircuit::get_num_qubits)
     .def("__str__", &QuantumCircuit::to_string)
     .def("num_params", &QuantumCircuit::num_params)
-    .def("bind_params", &QuantumCircuit::bind_params)
+    .def("bind_parameters", &QuantumCircuit::bind_parameters)
     .def("bind_measurement_outcomes", &QuantumCircuit::bind_measurement_outcomes)
     .def("length", &QuantumCircuit::length)
     .def("mzr", [](QuantumCircuit& self, uint32_t q, TargetOpt target) { 
@@ -230,6 +231,12 @@ NB_MODULE(qutils_bindings, m) {
     .def("random_clifford", [](QuantumCircuit& self, const std::vector<uint32_t>& qubits) {
       self.random_clifford(qubits);
     })
+    .def("cl_not", &QuantumCircuit::cl_not)
+    .def("cl_and", &QuantumCircuit::cl_and)
+    .def("cl_or", &QuantumCircuit::cl_or)
+    .def("cl_xor", &QuantumCircuit::cl_xor)
+    .def("cl_nand", &QuantumCircuit::cl_nand)
+    .def("cl_clear", &QuantumCircuit::cl_clear)
     .def("is_clifford", &QuantumCircuit::is_clifford)
     .def("adjoint", [](QuantumCircuit& self, const std::optional<std::vector<double>> params) { return self.adjoint(params); }, "params"_a = nanobind::none())
     .def("reverse", &QuantumCircuit::reverse)

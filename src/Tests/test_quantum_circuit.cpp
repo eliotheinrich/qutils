@@ -254,7 +254,7 @@ bool test_parametrized_circuit() {
       }
     }
 
-    QuantumCircuit qc1_ = qc1.bind_params(parameters);
+    QuantumCircuit qc1_ = qc1.bind_parameters(parameters);
 
     ASSERT(qc1_.to_matrix().isApprox(qc2.to_matrix()));
     ASSERT(qc1_.to_matrix().adjoint().isApprox(qc2.adjoint().to_matrix()));
@@ -291,7 +291,7 @@ bool test_parametrized_circuit_nonunitary() {
       qc2.add_measurement(Measurement(qubits, P));
     }
 
-    QuantumCircuit qc1_bound = qc1.bind_params(parameters);
+    QuantumCircuit qc1_bound = qc1.bind_parameters(parameters);
 
     DensityMatrix rho1(nqb);
     rho1.evolve(qc1_bound);
@@ -368,10 +368,8 @@ bool test_random_conditioned_operation() {
     Statevector psi1(nqb);
     auto results1 = std::get<std::vector<bool>>(psi1.evolve(qc, opts).value());
 
-    qc.bind_measurement_outcomes(results1);
-
     Statevector psi2(nqb);
-    auto results2 = std::get<std::vector<bool>>(psi2.evolve(qc, opts).value());
+    auto results2 = std::get<std::vector<bool>>(psi2.evolve(qc.bind_measurement_outcomes(results1), opts).value());
   }
 
 
@@ -442,10 +440,9 @@ bool test_dag_ltr() {
     std::vector<bool> outcomes = std::get<std::vector<bool>>(s1.evolve(qc1, opts).value());
 
     QuantumCircuit qc2 = qc1.simplify(randf() < 0.5);
-    qc2.bind_measurement_outcomes(outcomes);
 
     Statevector s2(nqb);
-    s2.evolve(qc2, opts);
+    s2.evolve(qc2.bind_measurement_outcomes(outcomes), opts);
 
     ASSERT(is_close(std::abs(s1.inner(s2)), 1.0));
   }
@@ -487,7 +484,7 @@ bool test_classical_circuit() {
 
     Qubits sites = random_qubits(nqb, nqb/2);
     for (auto q : sites) {
-      qc.cl_not(q);
+      qc.cl_not(q, q);
     }
 
     for (uint32_t q = 0; q < nqb; q++) {
