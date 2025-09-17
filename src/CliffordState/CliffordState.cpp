@@ -18,8 +18,8 @@ EvolveResult CliffordState::evolve(const QuantumCircuit& circuit, EvolveOpts opt
     throw std::runtime_error("Provided circuit is not Clifford.");
   }
 
-  if (circuit.num_params() > 0) {
-    throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve Statevector.");
+  if (circuit.get_num_parameters() > 0) {
+    throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve.");
   }
 
   BitString bits(circuit.get_num_cbits());

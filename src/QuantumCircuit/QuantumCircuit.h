@@ -19,9 +19,36 @@ class QuantumCircuit {
     uint32_t num_qubits;
     uint32_t num_cbits;
 
+    // Maps index of measurement to index of corresponding instruction
+    // i.e. measurement_map[0] contains the index of the first measurement, etc.
+    std::vector<size_t> measurement_map;
+
+    // Maps index of parameter to index of corresponding instruction
+    // i.e. parameter_map[0] contains the index of the instruction containing the first parameter, etc.
+    std::vector<size_t> parameter_map;
+
+    void validate_instruction(const Instruction& inst) const;
+
+    template <typename GateType, typename...Args>
+    void add_gate(const Qubits& qubits, std::optional<std::vector<double>> theta_opt=std::nullopt, ControlOpt control=std::nullopt, const Args&... args) {
+      if (theta_opt) {
+        GateType gate(qubits, args...);
+        add_gate(std::make_shared<MatrixGate>(gate.define(theta_opt.value()), qubits, gate.label()), control);
+      } else {
+        add_gate(std::make_shared<GateType>(qubits, args...), control);
+      }
+    }
+
+    static inline std::optional<std::vector<double>> to_vector(std::optional<double> theta_opt) {
+      if (theta_opt) {
+        return std::vector<double>{theta_opt.value()};
+      } else {
+        return std::nullopt;
+      }
+    }
+
   public:
     std::vector<Instruction> instructions;
-    std::vector<size_t> measurement_map;
 
     QuantumCircuit() : num_qubits(0), num_cbits(0) {}
 
@@ -30,10 +57,11 @@ class QuantumCircuit {
     QuantumCircuit(const QuantumCircuit& qc) : num_qubits(qc.num_qubits), num_cbits(qc.num_cbits) { 
       append(qc); 
       measurement_map = qc.measurement_map;
+      parameter_map = qc.parameter_map;
     };
 
     CircuitDAG to_dag() const;
-    static QuantumCircuit to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map, bool ltr=true);
+    static QuantumCircuit to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map, const std::vector<size_t>& parameter_map, bool ltr=true);
     QuantumCircuit simplify(bool ltr) const;
 
     uint32_t get_num_qubits() const {
@@ -52,13 +80,15 @@ class QuantumCircuit {
       this->num_cbits = num_cbits;
     }
 
+    void apply_qubit_map(const Qubits& qubits);
+    void apply_cbit_map(const Qubits& bits);
+
     std::string to_string() const;
     friend std::ostream& operator<<(std::ostream& stream, const QuantumCircuit& qc) {
       stream << qc.to_string();
       return stream;
     }
 
-    uint32_t num_params() const;
     uint32_t length() const;
 
     bool is_unitary() const;
@@ -86,12 +116,7 @@ class QuantumCircuit {
       }(), ...);
     }
 
-    void apply_qubit_map(const Qubits& qubits);
-    void apply_cbit_map(const Qubits& bits);
-
     Qubits get_support() const;
-
-    void validate_instruction(const Instruction& inst) const;
 
     void add_instruction(const Instruction& inst);
     void add_controlled_instruction(const QuantumInstruction& qinst, size_t control);
@@ -112,105 +137,87 @@ class QuantumCircuit {
       WeakMeasurement m(qubits, beta, pauli, outcome);
       add_weak_measurement(m, target);
     }
-    void wmzr(uint32_t q, double beta, TargetOpt target=std::nullopt) { 
+    void wmzr(uint32_t q, std::optional<double> beta=std::nullopt, TargetOpt target=std::nullopt) { 
       WeakMeasurement m({q}, beta, std::nullopt, std::nullopt);
       add_weak_measurement(m, target); 
     }
 
     void add_gate(const FreeFermionGate& gate, ControlOpt control=std::nullopt);
-    void add_gate(const std::string& name, const Qubits& qubits, ControlOpt control=std::nullopt);
     void add_gate(const std::shared_ptr<Gate> &gate, ControlOpt control=std::nullopt);
     void add_gate(const Eigen::MatrixXcd& gate, const Qubits& qubits, ControlOpt control=std::nullopt);
     void add_gate(const Eigen::Matrix2cd& gate, uint32_t qubit, ControlOpt control=std::nullopt);
+    void add_gate(const std::string& name, const Qubits& qubits, ControlOpt control=std::nullopt);
 
-    void h(uint32_t q) {
-      add_gate("h", {q});
+    void h(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("h", {q}, control);
     }
 
-    void s(uint32_t q) {
-      add_gate("s", {q});
+    void s(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("s", {q}, control);
     }
 
-    void sd(uint32_t q) {
-      add_gate("sd", {q});
+    void sd(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("sd", {q}, control);
     }
 
-    void t(uint32_t q) {
-      add_gate("t", {q});
+    void t(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("t", {q}, control);
     }
 
-    void td(uint32_t q) {
-      add_gate("td", {q});
+    void td(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("td", {q}, control);
     }
 
-    void x(uint32_t q) {
-      add_gate("x", {q});
+    void x(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("x", {q}, control);
     }
 
-    void y(uint32_t q) {
-      add_gate("y", {q});
+    void y(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("y", {q}, control);
     }
 
-    void z(uint32_t q) {
-      add_gate("z", {q});
+    void z(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("z", {q}, control);
     }
 
-    void sqrtX(uint32_t q) {
-      add_gate("sqrtX", {q});
+    void sqrtX(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("sqrtX", {q}, control);
     }
 
-    void sqrtY(uint32_t q) {
-      add_gate("sqrtY", {q});
+    void sqrtY(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("sqrtY", {q}, control);
     }
 
-    void sqrtZ(uint32_t q) {
-      add_gate("sqrtZ", {q});
+    void sqrtZ(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("sqrtZ", {q}, control);
     }
 
-    void sqrtXd(uint32_t q) {
-      add_gate("sqrtXd", {q});
+    void sqrtXd(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("sqrtXd", {q}, control);
     }
 
-    void sqrtYd(uint32_t q) {
-      add_gate("sqrtYd", {q});
+    void sqrtYd(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("sqrtYd", {q}, control);
     }
 
-    void sqrtZd(uint32_t q) {
-      add_gate("sqrtZd", {q});
+    void sqrtZd(uint32_t q, ControlOpt control=std::nullopt) {
+      add_gate("sqrtZd", {q}, control);
     }
 
-    void cx(uint32_t q1, uint32_t q2) {
-      add_gate("cx", {q1, q2});
+    void cx(uint32_t q1, uint32_t q2, ControlOpt control=std::nullopt) {
+      add_gate("cx", {q1, q2}, control);
     }
 
-    void cy(uint32_t q1, uint32_t q2) {
-      add_gate("cy", {q1, q2});
+    void cy(uint32_t q1, uint32_t q2, ControlOpt control=std::nullopt) {
+      add_gate("cy", {q1, q2}, control);
     }
 
-    void cz(uint32_t q1, uint32_t q2) {
-      add_gate("cz", {q1, q2});
+    void cz(uint32_t q1, uint32_t q2, ControlOpt control=std::nullopt) {
+      add_gate("cz", {q1, q2}, control);
     }
 
-    void swap(uint32_t q1, uint32_t q2) {
-      add_gate("swap", {q1, q2});
-    }
-
-    template <typename GateType, typename...Args>
-    void add_gate(const Qubits& qubits, std::optional<std::vector<double>> theta_opt=std::nullopt, ControlOpt control=std::nullopt, const Args&... args) {
-      if (theta_opt) {
-        GateType gate(qubits, args...);
-        add_gate(std::make_shared<MatrixGate>(gate.define(theta_opt.value()), qubits, gate.label()), control);
-      } else {
-        add_gate(std::make_shared<GateType>(qubits, args...), control);
-      }
-    }
-
-    static inline std::optional<std::vector<double>> to_vector(std::optional<double> theta_opt) {
-      if (theta_opt) {
-        return std::vector<double>{theta_opt.value()};
-      } else {
-        return std::nullopt;
-      }
+    void swap(uint32_t q1, uint32_t q2, ControlOpt control=std::nullopt) {
+      add_gate("swap", {q1, q2}, control);
     }
 
     void rx(uint32_t q, std::optional<double> theta_opt=std::nullopt, ControlOpt control=std::nullopt) {
@@ -242,12 +249,21 @@ class QuantumCircuit {
     void append(const QuantumCircuit& other, const Qubits& qubits);
     void append(const Instruction& inst, ControlOpt control=std::nullopt);
 
+    void erase(size_t i);
+
     QuantumCircuit bind_parameters(const std::vector<double>& params) const;
     QuantumCircuit bind_measurement_outcomes(const std::vector<bool>& outcomes) const;
     size_t get_num_measurements() const;
     std::vector<size_t> get_measurement_map() const {
       return measurement_map;
     }
+
+    size_t get_num_parameters() const;
+    std::vector<size_t> get_parameter_map() const {
+      return parameter_map;
+    }
+
+    bool instruction_is_measurement(size_t i) const;
 
     QuantumCircuit adjoint(const std::optional<std::vector<double>>& params_opt=std::nullopt) const;
     QuantumCircuit reverse() const;
@@ -270,8 +286,7 @@ struct fmt::formatter<QuantumCircuit> {
 };
 
 
-// --- Library for building common circuits --- //
-
+// --- Building common circuits --- //
 QuantumCircuit generate_haar_circuit(uint32_t num_qubits, uint32_t depth, bool pbc=true);
 QuantumCircuit hardware_efficient_ansatz(uint32_t num_qubits, uint32_t depth, const std::vector<std::string>& rotation_gates, const std::string& entangling_gate = "cz", bool final_layer = true);
 QuantumCircuit rotation_layer(uint32_t num_qubits, const std::optional<Qubits>& qargs_opt = std::nullopt);

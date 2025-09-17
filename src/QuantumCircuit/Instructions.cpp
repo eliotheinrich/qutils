@@ -461,13 +461,23 @@ std::string FreeFermionGate::label() const {
 }
 
 FreeFermionGate FreeFermionGate::bind_parameters(const std::vector<double>& params) const {
-  if (params.size() != 1) {
-    throw std::runtime_error("Must provide exactly one parameter to FreeFermionGate.");
-  }
-
   FreeFermionGate gate(*this);
-  gate.t = params[0];
-  return std::move(gate);
+  if (params.size() == 0) {
+    if (gate.t) { 
+      return std::move(gate);
+    } else {
+      throw std::runtime_error("FreeFermionGate has unbound parameter, but was passed no parameters to bind.");
+    }
+  } else if (params.size() == 1) {
+    if (gate.t) {
+      throw std::runtime_error("FreeFermionGate has already bound parameter, but was passed a parameters to bind.");
+    } else {
+      gate.t = params[0];
+      return std::move(gate);
+    }
+  } else {
+    throw std::runtime_error("FreeFermionGate was passed an incorrect number of parameters to bind.");
+  }
 }
 
 void FreeFermionGate::apply_qubit_map(const Qubits& qubits) {
@@ -661,7 +671,7 @@ bool Measurement::get_outcome() const {
   return outcome.value();
 }
 
-WeakMeasurement::WeakMeasurement(const Qubits& qubits, double beta, std::optional<PauliString> pauli, std::optional<bool> outcome)
+WeakMeasurement::WeakMeasurement(const Qubits& qubits, std::optional<double> beta, std::optional<PauliString> pauli, std::optional<bool> outcome)
   : qubits(qubits), beta(beta), pauli(pauli), outcome(outcome) {
   PauliString p = pauli ? pauli.value() : PauliString("+Z");
   if (qubits.size() != p.num_qubits) {
@@ -674,13 +684,23 @@ size_t WeakMeasurement::num_params() const {
 }
 
 WeakMeasurement WeakMeasurement::bind_parameters(const std::vector<double>& params) const {
-  if (params.size() != 1) {
-    throw std::runtime_error("Weak measurements accept exactly one parameter.");
-  }
-
   WeakMeasurement m(*this);
-  m.beta = params[0];
-  return m;
+  if (params.size() == 0) {
+    if (m.beta) { 
+      return std::move(m);
+    } else {
+      throw std::runtime_error("WeakMeasurement has unbound parameter, but was passed no parameters to bind.");
+    }
+  } else if (params.size() == 1) {
+    if (m.beta) {
+      throw std::runtime_error("WeakMeasurement has already bound parameter, but was passed a parameters to bind.");
+    } else {
+      m.beta = params[0];
+      return std::move(m);
+    }
+  } else {
+    throw std::runtime_error("WeakMeasurement was passed an incorrect number of parameters to bind.");
+  }
 }
 
 PauliString WeakMeasurement::get_pauli() const {
@@ -702,6 +722,37 @@ bool WeakMeasurement::is_forced() const {
 bool WeakMeasurement::get_outcome() const {
   // is_forced() MUST be true, otherwise this will throw an exception
   return outcome.value();
+}
+
+size_t get_quantum_instruction_num_params(const QuantumInstruction& qinst) {
+	return std::visit(quantumcircuit_utils::overloaded {
+    [](const std::shared_ptr<Gate> gate) -> size_t { 
+      return gate->num_params();
+    },
+    [](const FreeFermionGate& gate) -> size_t {
+      return gate.num_params();
+    },
+    [](const Measurement& m) -> size_t { 
+      return 0;
+    },
+    [](const WeakMeasurement& m) -> size_t {
+      return m.num_params();
+    }
+  }, qinst);
+}
+
+size_t get_instruction_num_params(const Instruction& inst) {
+	return std::visit(quantumcircuit_utils::overloaded {
+    [](const QuantumInstruction& qinst) -> size_t {
+      return get_quantum_instruction_num_params(qinst);
+    },
+    [](const ClassicalInstruction& clinst) -> size_t {
+      return 0;
+    },
+    [](const ConditionedInstruction& cinst) -> size_t { 
+      return get_quantum_instruction_num_params(cinst.inst);
+    },
+  }, inst);
 }
 
 Qubits get_quantum_instruction_support(const QuantumInstruction& qinst) {

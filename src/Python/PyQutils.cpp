@@ -166,19 +166,23 @@ NB_MODULE(qutils_bindings, m) {
     .def(nanobind::init<uint32_t>())
     .def(nanobind::init<uint32_t, uint32_t>())
     .def(nanobind::init<QuantumCircuit&>())
-    .def_ro("measurement_map", &QuantumCircuit::measurement_map)
     .def("num_qubits", &QuantumCircuit::get_num_qubits)
     .def("__str__", &QuantumCircuit::to_string)
-    .def("num_params", &QuantumCircuit::num_params)
+    .def("num_params", &QuantumCircuit::get_num_parameters)
     .def("bind_parameters", &QuantumCircuit::bind_parameters)
     .def("bind_measurement_outcomes", &QuantumCircuit::bind_measurement_outcomes)
     .def("length", &QuantumCircuit::length)
+    .def("get_measurement_map", &QuantumCircuit::get_measurement_map)
+    .def("get_parameter_map", &QuantumCircuit::get_parameter_map)
     .def("mzr", [](QuantumCircuit& self, uint32_t q, TargetOpt target) { 
       self.mzr(q, target);
     }, "qubit"_a, "target"_a=nanobind::none())
     .def("add_measurement", [](QuantumCircuit& self, const Qubits& qubits, const PauliString& pauli, std::optional<bool> outcome, TargetOpt target) {
       self.add_measurement(qubits, pauli, outcome, target);
     }, "qubits"_a, "pauli"_a, "outcome"_a=nanobind::none(), "target"_a=nanobind::none())
+    .def("wmzr", [](QuantumCircuit& self, uint32_t q, std::optional<double> beta, TargetOpt target) { 
+      self.wmzr(q, beta, target);
+    }, "qubit"_a, "beta"_a=nanobind::none(), "target"_a=nanobind::none())
     .def("add_weak_measurement", [](QuantumCircuit& self, const Qubits& qubits, double beta, const PauliString& pauli, std::optional<bool> outcome) {
       self.add_weak_measurement(qubits, beta, pauli, outcome);
     }, "qubits"_a, "beta"_a, "pauli"_a, "outcome"_a=std::nullopt)

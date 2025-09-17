@@ -470,7 +470,7 @@ struct WeakMeasurement {
   std::optional<PauliString> pauli;
   std::optional<bool> outcome;
 
-  WeakMeasurement(const Qubits& qubits, double beta, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
+  WeakMeasurement(const Qubits& qubits, std::optional<double> beta=std::nullopt, std::optional<PauliString> pauli=std::nullopt, std::optional<bool> outcome=std::nullopt);
   size_t num_params() const;
   WeakMeasurement bind_parameters(const std::vector<double>& beta) const;
   PauliString get_pauli() const;
@@ -671,6 +671,7 @@ struct fmt::formatter<Instruction> {
 };
 
 Instruction copy_instruction(const Instruction& inst);
+size_t get_instruction_num_params(const Instruction& inst);
 Qubits get_instruction_support(const Instruction& inst);
 Qubits get_instruction_classical_support(const Instruction& inst);
 bool instruction_is_unitary(const Instruction& inst);

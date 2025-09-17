@@ -261,8 +261,8 @@ std::optional<MeasurementData> QuantumState::evolve(const QuantumInstruction& in
 }
 
 EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) {
-  if (circuit.num_params() > 0) {
-    throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve Statevector.");
+  if (circuit.get_num_parameters() > 0) {
+    throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve.");
   }
 
   BitString bits(circuit.get_num_cbits());
