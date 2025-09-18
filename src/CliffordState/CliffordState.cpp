@@ -2,15 +2,11 @@
 #include <algorithm>
 
 EvolveResult CliffordState::evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
-  if (qubits.size() != circuit.get_num_qubits()) {
-    throw std::runtime_error("Provided qubits do not match size of circuit.");
+  if (!circuit.is_clifford()) {
+    throw std::runtime_error("Provided circuit is not Clifford.");
   }
 
-  QuantumCircuit circuit_mapped(circuit);
-  circuit_mapped.resize_qubits(num_qubits);
-  circuit_mapped.apply_qubit_map(qubits);
-
-  return evolve(circuit_mapped);
+  return QuantumState::_evolve(circuit, qubits, opts);
 }
 
 EvolveResult CliffordState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) {
@@ -18,50 +14,7 @@ EvolveResult CliffordState::evolve(const QuantumCircuit& circuit, EvolveOpts opt
     throw std::runtime_error("Provided circuit is not Clifford.");
   }
 
-  if (circuit.get_num_parameters() > 0) {
-    throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve.");
-  }
-
-  BitString bits(circuit.get_num_cbits());
-
-  // Preparing reversed measurement_map
-  size_t num_measurements = circuit.get_num_measurements();
-  std::vector<MeasurementData> measurements(num_measurements);
-  std::vector<size_t> measurement_map = circuit.get_measurement_map();
-  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);
-
-  for (size_t i = 0; i < circuit.length(); i++) {
-    std::optional<MeasurementData> result;
-    std::visit(quantumcircuit_utils::overloaded {
-      [&](const QuantumInstruction& qinst) {
-        result = evolve(qinst);
-      },
-      [&](const ClassicalInstruction& clinst) {
-        clinst.apply(bits);
-      },
-      [&](const ConditionedInstruction& cinst) {
-        const auto& inst = circuit.instructions[i];
-        if (!cinst.should_execute(bits)) {
-          return;
-        }
-
-        result = evolve(cinst.inst);
-
-        if (result) {
-          if (cinst.target) {
-            bits.set(cinst.target.value(), result->first);
-          }
-        }
-      }
-
-    }, circuit.instructions[i]);
-
-    if (result) {
-      measurements[reversed_map.at(i)] = result.value();
-    }
-  }  
-
-  return process_measurement_results(measurements, opts);
+  return QuantumState::_evolve(circuit, opts);
 }
 
 std::optional<MeasurementData> CliffordState::evolve(const QuantumInstruction& inst) {

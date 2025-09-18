@@ -229,6 +229,24 @@ void QuantumState::evolve(const Eigen::Matrix2cd& gate, uint32_t q) {
   _evolve(gate, qubit); 
 }
 
+void QuantumState::evolve(const PauliString& pauli, const Qubits& qubits) {
+  for (size_t i = 0; i < qubits.size(); i++) {
+    uint32_t q = qubits[i];
+
+    switch (pauli.to_pauli(i)) {
+      case Pauli::X:
+        x(q);
+        break;
+      case Pauli::Y:
+        y(q);
+        break;
+      case Pauli::Z:
+        z(q);
+        break;
+    }
+  }
+}
+
 void QuantumState::evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits) { 
   evolve(Eigen::MatrixXcd(gate.asDiagonal()), qubits); 
 }
@@ -260,7 +278,7 @@ std::optional<MeasurementData> QuantumState::evolve(const QuantumInstruction& in
   }, inst);
 }
 
-EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) {
+EvolveResult QuantumState::_evolve(const QuantumCircuit& circuit, EvolveOpts opts) {
   if (circuit.get_num_parameters() > 0) {
     throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve.");
   }
@@ -307,7 +325,7 @@ EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts
   return process_measurement_results(measurements, opts);
 }
 
-EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
+EvolveResult QuantumState::_evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
   if (qubits.size() != circuit.get_num_qubits()) {
     throw std::runtime_error("Provided qubits do not match size of circuit.");
   }
@@ -316,7 +334,40 @@ EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, const Qubits& q
   circuit_mapped.resize_qubits(num_qubits);
   circuit_mapped.apply_qubit_map(qubits);
 
-  return evolve(circuit_mapped, opts);
+  return _evolve(circuit_mapped, opts);
+}
+
+EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) { 
+  EvolveResult result;
+  if (opts.simplify_circuit) {
+    bool dir = get_dir(opts);
+
+    QuantumCircuit simple = circuit.simplify(dir);
+    Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+
+    return QuantumState::_evolve(simple, opts); 
+  } else {
+    return QuantumState::_evolve(circuit, opts);
+  }
+}
+
+EvolveResult QuantumState::evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
+  if (opts.simplify_circuit) {
+    bool dir = get_dir(opts);
+
+    QuantumCircuit simple = circuit.simplify(dir);
+    Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
+
+    if (simple.is_unitary() && qubits.size() < 4) {
+      Eigen::MatrixXcd matrix = simple.to_matrix();
+      this->evolve(matrix, qubits);
+      return {};
+    } else {
+      return QuantumState::_evolve(simple, qubits, opts);
+    }
+  } else {
+    return QuantumState::_evolve(circuit, qubits, opts);
+  }
 }
 
 bool QuantumState::check_forced_measure(bool& outcome, double prob_zero) {

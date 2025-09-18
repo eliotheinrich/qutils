@@ -141,6 +141,7 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits)=0;
 		virtual void evolve(const Eigen::MatrixXcd& gate);
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t q);
+    virtual void evolve(const PauliString& pauli, const Qubits& qubits);
 
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate, const Qubits& qubits);
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate);
@@ -149,9 +150,13 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
 
 		virtual std::optional<MeasurementData> evolve(const QuantumInstruction& inst);
 
-    virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts());
-    virtual EvolveResult evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts=EvolveOpts());
+    // Do evolution without any simplification
+    EvolveResult _evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts());
+    EvolveResult _evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts());
 
+    // Basic case applies some simplifications
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts());
+    virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts());
 
     void _evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits);
 
@@ -236,10 +241,6 @@ class MagicQuantumState : public QuantumState {
     ~MagicQuantumState()=default;
     MagicQuantumState(uint32_t num_qubits) : QuantumState(num_qubits), use_parent(false) {}
 
-    using QuantumState::evolve;  
-		virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override;
-    virtual EvolveResult evolve(const QuantumCircuit& qc, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override;
-
     virtual std::vector<PauliAmplitudes> sample_paulis_montecarlo(const std::vector<QubitSupport>& qubits, size_t num_samples, size_t equilibration_timesteps, ProbabilityFunc prob, std::optional<PauliMutationFunc> mutation_opt=std::nullopt);
     virtual std::vector<PauliAmplitudes> sample_paulis_exhaustive(const std::vector<QubitSupport>& qubits);
     virtual std::vector<PauliAmplitudes> sample_paulis_exact(const std::vector<QubitSupport>& qubits, size_t num_samples, ProbabilityFunc prob);
@@ -317,10 +318,10 @@ class DensityMatrix : public MagicQuantumState {
 
     // Convenience
     virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
-      return MagicQuantumState::evolve(circuit, opts);
+      return QuantumState::evolve(circuit, opts);
     }
     virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override {
-      return MagicQuantumState::evolve(circuit, qubits, opts);
+      return QuantumState::evolve(circuit, qubits, opts);
     }
 
 		double mzr_prob(uint32_t q, bool outcome) const;
@@ -385,10 +386,10 @@ class Statevector : public MagicQuantumState {
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate) override;
 
     virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
-      return MagicQuantumState::evolve(circuit, opts);
+      return QuantumState::evolve(circuit, opts);
     }
     virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override {
-      return MagicQuantumState::evolve(circuit, qubits, opts);
+      return QuantumState::evolve(circuit, qubits, opts);
     }
 
 		double mzr_prob(uint32_t q, bool outcome) const;
@@ -475,10 +476,10 @@ class MatrixProductState : public MagicQuantumState {
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
 
     virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
-      return MagicQuantumState::evolve(circuit, opts);
+      return QuantumState::evolve(circuit, opts);
     }
     virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override {
-      return MagicQuantumState::evolve(circuit, qubits, opts);
+      return QuantumState::evolve(circuit, qubits, opts);
     }
 
 		virtual std::vector<double> probabilities() const override;

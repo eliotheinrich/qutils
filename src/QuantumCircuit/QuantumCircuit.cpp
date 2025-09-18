@@ -638,6 +638,32 @@ void QuantumCircuit::erase(size_t i) {
   instructions.erase(instructions.begin() + i);
 }
 
+void QuantumCircuit::insert(size_t i, const QuantumInstruction& qinst) {
+  for (size_t k = 0; k < measurement_map.size(); k++) {
+    if (measurement_map[k] > i) {
+      measurement_map[k]++;
+    }
+  }
+  if (!instruction_is_unitary(qinst)) {
+    measurement_map.push_back(i);
+  }
+
+  for (size_t k = 0; k < parameter_map.size(); k++) {
+    if (parameter_map[k] > i) {
+      parameter_map[k]++;
+    }
+  }
+  size_t nparams = get_instruction_num_params(qinst);
+  if (nparams > 0) {
+    for (size_t k = 0; k < nparams; k++) {
+      parameter_map.push_back(i);
+    }
+  }
+
+
+  instructions.insert(instructions.begin() + i, copy_instruction(qinst));
+}
+
 void QuantumCircuit::append(const QuantumCircuit& other) {
   if (num_qubits != other.num_qubits) {
     throw std::invalid_argument("Cannot append QuantumCircuits; numbers of qubits do not match.");
@@ -774,6 +800,43 @@ QuantumCircuit QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>
 
 size_t QuantumCircuit::get_num_measurements() const {
   return measurement_map.size();
+}
+
+using MeasurementVariant = std::variant<Measurement, WeakMeasurement>;
+MeasurementVariant QuantumCircuit::get_measurement(size_t i) const {
+  if (i >= measurement_map.size()) {
+    throw std::runtime_error(fmt::format("Cannot retrieve measurement {} in a circuit with {} measurements.", i, measurement_map.size()));
+  }
+
+  const Instruction& inst = instructions[measurement_map[i]];
+  auto extract_measurement = [](const QuantumInstruction& qinst) -> MeasurementVariant {
+    return std::visit(quantumcircuit_utils::overloaded{
+      [](const Measurement& m) -> MeasurementVariant {
+        return m;
+      },
+      [](const WeakMeasurement& m) -> MeasurementVariant {
+        return m;
+      },
+      [](const std::shared_ptr<Gate>& gate) -> MeasurementVariant {
+        throw std::runtime_error("Error with measurement_map.");
+      },
+      [](const FreeFermionGate& gate) -> MeasurementVariant {
+        throw std::runtime_error("Error with measurement_map.");
+      }
+    }, qinst);
+  };
+
+  return std::visit(quantumcircuit_utils::overloaded{
+    [&extract_measurement](const QuantumInstruction& qinst) -> MeasurementVariant {
+      return extract_measurement(qinst);
+    },
+    [](const ClassicalInstruction& clinst) -> MeasurementVariant {
+      throw std::runtime_error("Error with measurement_map.");
+    },
+    [&extract_measurement](const ConditionedInstruction& cinst) -> MeasurementVariant {
+      return extract_measurement(cinst.inst);
+    }
+  }, inst);
 }
 
 size_t QuantumCircuit::get_num_parameters() const {

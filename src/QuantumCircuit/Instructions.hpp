@@ -596,7 +596,7 @@ struct fmt::formatter<QuantumInstruction> {
         },
         [](const WeakMeasurement& m) -> std::string {
           std::string beta = m.beta ? fmt::format("{:.5f}", m.beta.value()) : "beta";
-          std::string meas_str = fmt::format("weak_measure({}, {}) ", m.get_pauli(), beta);
+          std::string meas_str = fmt::format("weak_measure({}, {}) ", beta, m.get_pauli());
           for (auto const &q : m.qubits) {
             meas_str += fmt::format("{} ", q);
           }

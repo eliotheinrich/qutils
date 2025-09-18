@@ -250,6 +250,7 @@ class QuantumCircuit {
     void append(const Instruction& inst, ControlOpt control=std::nullopt);
 
     void erase(size_t i);
+    void insert(size_t i, const QuantumInstruction& qinst);
 
     QuantumCircuit bind_parameters(const std::vector<double>& params) const;
     QuantumCircuit bind_measurement_outcomes(const std::vector<bool>& outcomes) const;
@@ -257,6 +258,7 @@ class QuantumCircuit {
     std::vector<size_t> get_measurement_map() const {
       return measurement_map;
     }
+    std::variant<Measurement, WeakMeasurement> get_measurement(size_t i) const;
 
     size_t get_num_parameters() const;
     std::vector<size_t> get_parameter_map() const {

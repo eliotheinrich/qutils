@@ -162,6 +162,10 @@ NB_MODULE(qutils_bindings, m) {
   .def("reset", &ADAMOptimizer::reset)
   .def("step", &ADAMOptimizer::step);
 
+  using MeasurementTuple = std::variant<
+    std::tuple<Qubits, PauliString>, 
+    std::tuple<Qubits, std::optional<double>, PauliString>
+  >;
   nanobind::class_<QuantumCircuit>(m, "QuantumCircuit")
     .def(nanobind::init<uint32_t>())
     .def(nanobind::init<uint32_t, uint32_t>())
@@ -202,38 +206,49 @@ NB_MODULE(qutils_bindings, m) {
         self.append(other); 
       }
     }, "circuit"_a, "qubits"_a = nanobind::none())
-    .def("h", &QuantumCircuit::h)
-    .def("x", &QuantumCircuit::x)
-    .def("y", &QuantumCircuit::y)
-    .def("z", &QuantumCircuit::z)
-    .def("s", &QuantumCircuit::s)
-    .def("sd", &QuantumCircuit::sd)
-    .def("t", &QuantumCircuit::t)
-    .def("td", &QuantumCircuit::td)
-    .def("sqrtX", &QuantumCircuit::sqrtX)
-    .def("sqrtY", &QuantumCircuit::sqrtY)
-    .def("sqrtZ", &QuantumCircuit::sqrtZ)
-    .def("sqrtXd", &QuantumCircuit::sqrtXd)
-    .def("sqrtYd", &QuantumCircuit::sqrtYd)
-    .def("sqrtZd", &QuantumCircuit::sqrtZd)
-    .def("cx", &QuantumCircuit::cx)
-    .def("cy", &QuantumCircuit::cy)
-    .def("cz", &QuantumCircuit::cz)
-    .def("swap", &QuantumCircuit::swap)
-    .def("rx", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { 
-      self.rx(q, theta_opt); 
-    }, "q"_a, "theta"_a=nanobind::none())
-    .def("ry", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { 
-      self.ry(q, theta_opt); 
-    }, "q"_a, "theta"_a=nanobind::none())
-    .def("rz", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt) { 
-      self.rz(q, theta_opt); 
-    }, "q"_a, "theta"_a=nanobind::none())
+    .def("h", &QuantumCircuit::h, "q"_a, "control"_a=nanobind::none())
+    .def("x", &QuantumCircuit::x, "q"_a, "control"_a=nanobind::none())
+    .def("y", &QuantumCircuit::y, "q"_a, "control"_a=nanobind::none())
+    .def("z", &QuantumCircuit::z, "q"_a, "control"_a=nanobind::none())
+    .def("s", &QuantumCircuit::s, "q"_a, "control"_a=nanobind::none())
+    .def("sd", &QuantumCircuit::sd, "q"_a, "control"_a=nanobind::none())
+    .def("t", &QuantumCircuit::t, "q"_a, "control"_a=nanobind::none())
+    .def("td", &QuantumCircuit::td, "q"_a, "control"_a=nanobind::none())
+    .def("sqrtX", &QuantumCircuit::sqrtX, "q"_a, "control"_a=nanobind::none())
+    .def("sqrtY", &QuantumCircuit::sqrtY, "q"_a, "control"_a=nanobind::none())
+    .def("sqrtZ", &QuantumCircuit::sqrtZ, "q"_a, "control"_a=nanobind::none())
+    .def("sqrtXd", &QuantumCircuit::sqrtXd, "q"_a, "control"_a=nanobind::none())
+    .def("sqrtYd", &QuantumCircuit::sqrtYd, "q"_a, "control"_a=nanobind::none())
+    .def("sqrtZd", &QuantumCircuit::sqrtZd, "q"_a, "control"_a=nanobind::none())
+    .def("cx", &QuantumCircuit::cx, "q1"_a, "q2"_a, "control"_a=nanobind::none())
+    .def("cy", &QuantumCircuit::cy, "q1"_a, "q2"_a, "control"_a=nanobind::none())
+    .def("cz", &QuantumCircuit::cz, "q1"_a, "q2"_a, "control"_a=nanobind::none())
+    .def("swap", &QuantumCircuit::swap, "q1"_a, "q2"_a, "control"_a=nanobind::none())
+    .def("rx", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt, ControlOpt control) { 
+      self.rx(q, theta_opt, control); 
+    }, "q"_a, "theta"_a=nanobind::none(), "control"_a=nanobind::none())
+    .def("ry", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt, ControlOpt control) { 
+      self.ry(q, theta_opt, control); 
+    }, "q"_a, "theta"_a=nanobind::none(), "control"_a=nanobind::none())
+    .def("rz", [](QuantumCircuit& self, uint32_t q, std::optional<double> theta_opt, ControlOpt control) { 
+      self.rz(q, theta_opt, control); 
+    }, "q"_a, "theta"_a=nanobind::none(), "control"_a=nanobind::none())
     .def("rp", [](QuantumCircuit& self, const Qubits& qubits, const PauliString& pauli, std::optional<double> theta_opt, ControlOpt control) {
       self.rp(qubits, pauli, theta_opt, control); 
     }, "qubits"_a, "pauli"_a, "theta"_a=nanobind::none(), "control"_a=nanobind::none())
     .def("random_clifford", [](QuantumCircuit& self, const std::vector<uint32_t>& qubits) {
       self.random_clifford(qubits);
+    })
+    .def("get_measurement", [](const QuantumCircuit& self, size_t i) -> MeasurementTuple {
+      auto m = self.get_measurement(i);
+      return std::visit(quantumcircuit_utils::overloaded{
+        [](const Measurement& m) -> MeasurementTuple {
+          return std::make_tuple(m.qubits, m.get_pauli());
+        },
+        [](const WeakMeasurement& m) -> MeasurementTuple {
+          return std::make_tuple(m.qubits, m.beta, m.get_pauli());
+        }
+      }, m);
     })
     .def("cl_not", &QuantumCircuit::cl_not)
     .def("cl_and", &QuantumCircuit::cl_and)
@@ -242,6 +257,8 @@ NB_MODULE(qutils_bindings, m) {
     .def("cl_nand", &QuantumCircuit::cl_nand)
     .def("cl_clear", &QuantumCircuit::cl_clear)
     .def("is_clifford", &QuantumCircuit::is_clifford)
+    .def("erase", &QuantumCircuit::erase)
+    .def("insert", &QuantumCircuit::insert)
     .def("adjoint", [](QuantumCircuit& self, const std::optional<std::vector<double>> params) { return self.adjoint(params); }, "params"_a = nanobind::none())
     .def("reverse", &QuantumCircuit::reverse)
     .def("conjugate", &QuantumCircuit::conjugate)
@@ -377,6 +394,7 @@ NB_MODULE(qutils_bindings, m) {
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("evolve", [](Statevector& self, const Eigen::Matrix2cd& gate, uint32_t q) { self.evolve(gate, q); })
+    .def("evolve", [](Statevector& self, const PauliString& pauli, const Qubits& qubits) { self.QuantumState::evolve(pauli, qubits); })
     .def("evolve", [](Statevector& self, const Eigen::MatrixXcd& gate, const std::vector<uint32_t>& qubits) { self.evolve(gate, qubits); });
 
   nanobind::class_<DensityMatrix, MagicQuantumState>(m, "DensityMatrix")
@@ -403,6 +421,7 @@ NB_MODULE(qutils_bindings, m) {
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("evolve", [](DensityMatrix& self, const Eigen::Matrix2cd& gate, uint32_t q) { self.evolve(gate, q); })
+    .def("evolve", [](DensityMatrix& self, const PauliString& pauli, const Qubits& qubits) { self.QuantumState::evolve(pauli, qubits); })
     .def("evolve", [](DensityMatrix& self, const Eigen::MatrixXcd& gate, const std::vector<uint32_t>& qubits) { self.evolve(gate, qubits); });
 
   nanobind::class_<MatrixProductState, MagicQuantumState>(m, "MatrixProductState")
@@ -451,6 +470,7 @@ NB_MODULE(qutils_bindings, m) {
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
     .def("evolve", [](MatrixProductState& self, const Eigen::Matrix2cd& gate, uint32_t q) { self.evolve(gate, q); })
+    .def("evolve", [](MatrixProductState& self, const PauliString& pauli, const Qubits& qubits) { self.QuantumState::evolve(pauli, qubits); })
     .def("evolve", [](MatrixProductState& self, const Eigen::MatrixXcd& gate, const std::vector<uint32_t>& qubits) { self.evolve(gate, qubits); });
 
   m.def("ising_ground_state", &MatrixProductState::ising_ground_state, "num_qubits"_a, "h"_a, "bond_dimension"_a=16, "sv_threshold"_a=1e-8, "num_sweeps"_a=10);
@@ -481,6 +501,7 @@ NB_MODULE(qutils_bindings, m) {
         return self.evolve(qc, qubits);
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
+    .def("evolve", [](QuantumCHPState& self, const PauliString& pauli, const Qubits& qubits) { self.QuantumState::evolve(pauli, qubits); })
     .def("stabilizers", [](const QuantumCHPState& self) { return self.stabilizers(); })
     .def("get_stabilizer", [](const QuantumCHPState& self, size_t i) { 
         if (i < self.num_qubits) {

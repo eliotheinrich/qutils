@@ -1701,6 +1701,43 @@ bool test_sparse_pauli_obs() {
   return true;
 }
 
+bool test_pauli_evolution() {
+  constexpr size_t nqb = 8;
+  Statevector psi1(nqb);
+  MatrixProductState mps1(nqb, 1u << nqb);
+
+  Statevector psi2(nqb);
+  MatrixProductState mps2(nqb, 1u << nqb);
+  randomize_state_haar(psi1, mps1, psi2, mps2);
+
+  for (size_t i = 0; i < 20; i++) {
+    size_t n = randi(1, nqb);
+    Qubits qubits = random_qubits(nqb, n);
+    PauliString P = PauliString::randh(n);
+
+    psi1.QuantumState::evolve(P, qubits);
+    mps1.QuantumState::evolve(P, qubits);
+
+    for (size_t p = 0; p < n; p++) {
+      Pauli pi = P.to_pauli(p);
+      if (pi == Pauli::X) {
+        psi2.x(qubits[p]);
+        mps2.x(qubits[p]);
+      } else if (pi == Pauli::Y) {
+        psi2.y(qubits[p]);
+        mps2.y(qubits[p]);
+      } else if (pi == Pauli::Z) {
+        psi2.z(qubits[p]);
+        mps2.z(qubits[p]);
+      }
+    }
+
+    ASSERT(states_close(psi1, psi2, mps1, mps2));
+  }
+
+  return true;
+}
+
 using TestResult = std::tuple<bool, int>;
 
 #define ADD_TEST(x)                                                               \
@@ -1762,6 +1799,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_sv_entanglement);
   ADD_TEST(test_measurement_record);
   ADD_TEST(test_sparse_pauli_obs);
+  ADD_TEST(test_pauli_evolution);
   //ADD_TEST(test_chp_probs);
 
   constexpr char green[] = "\033[1;32m";

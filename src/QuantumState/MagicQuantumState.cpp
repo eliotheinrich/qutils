@@ -444,37 +444,3 @@ std::vector<double> MagicQuantumState::bipartite_magic_mutual_information_exact(
   );
   return data;
 }
-
-EvolveResult MagicQuantumState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) { 
-  EvolveResult result;
-  if (opts.simplify_circuit) {
-    bool dir = get_dir(opts);
-
-    QuantumCircuit simple = circuit.simplify(dir);
-    Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-    return QuantumState::evolve(simple, opts); 
-  } else {
-    return QuantumState::evolve(circuit, opts);
-  }
-}
-
-EvolveResult MagicQuantumState::evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
-  if (opts.simplify_circuit) {
-    bool dir = get_dir(opts);
-
-    QuantumCircuit simple = circuit.simplify(dir);
-    Logger::log_info(fmt::format("Simplified circuit from length {} to {}", circuit.length(), simple.length()));
-
-    if (simple.is_unitary() && qubits.size() < 4) {
-      Eigen::MatrixXcd matrix = simple.to_matrix();
-      this->evolve(matrix, qubits);
-      return {};
-    } else {
-      return QuantumState::evolve(simple, qubits, opts);
-    }
-  } else {
-    return QuantumState::evolve(circuit, qubits, opts);
-  }
-}
-

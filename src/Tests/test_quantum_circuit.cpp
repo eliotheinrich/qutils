@@ -84,7 +84,7 @@ bool test_qc_canonical() {
   for (size_t i = 0; i < 10; i++) {
     QuantumCircuit qc = random_unitary_circuit(nqb, 10, {2});
     CircuitDAG dag = qc.to_dag();
-    QuantumCircuit canon = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), randf() < 0.5);
+    QuantumCircuit canon = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), qc.get_parameter_map(), randf() < 0.5);
     ASSERT(qc.to_matrix().isApprox(canon.to_matrix()));
   }
 
@@ -122,8 +122,8 @@ bool test_dag_to_circuit() {
     QuantumCircuit qc = random_unitary_circuit(nqb, 10, {1, 2, 3});
 
     CircuitDAG dag = qc.to_dag();
-    QuantumCircuit left = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), true);
-    QuantumCircuit right = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), false);
+    QuantumCircuit left = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), qc.get_parameter_map(), true);
+    QuantumCircuit right = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), qc.get_parameter_map(), false);
     ASSERT(qc.to_matrix().isApprox(left.to_matrix()));
     ASSERT(qc.to_matrix().isApprox(right.to_matrix()));
   }
@@ -503,6 +503,131 @@ bool test_classical_circuit() {
   return true;
 }
 
+bool test_circuit_erase() {
+  constexpr size_t nqb = 16;
+
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc1(nqb, nqb);
+    QuantumCircuit qc2(nqb, nqb);
+    std::vector<size_t> removed;
+    for (size_t d = 0; d < 50; d++) {
+      if (randf() < 0.8) { // Unitary
+        size_t n = randi(1, 3);
+        PauliString P = PauliString::randh(n);
+        double theta = randf(0, 2*M_PI);
+
+        Qubits qubits(n);
+        std::iota(qubits.begin(), qubits.end(), randi(0, nqb - n - 1));
+        size_t control = randi(0, nqb);
+        qc1.rp(qubits, P, theta, control);
+        if (randf() < 0.2) {
+          removed.push_back(d);
+        } else {
+          qc2.rp(qubits, P, theta, control);
+        }
+      } else {
+        size_t n = randi(1, 3);
+        PauliString P = PauliString::randh(n);
+        double theta = randf(0, 2*M_PI);
+
+        Qubits qubits(n);
+        std::iota(qubits.begin(), qubits.end(), randi(0, nqb - n - 1));
+        size_t target = randi(0, nqb);
+        qc1.add_measurement(qubits, P, std::nullopt, target);
+        if (randf() < 0.2) {
+          removed.push_back(d);
+        } else {
+          qc2.add_measurement(qubits, P, std::nullopt, target);
+        }
+      }
+    }
+
+    std::reverse(removed.begin(), removed.end());
+
+    for (auto d : removed) {
+      qc1.erase(d);
+    }
+
+    ASSERT(qc1.to_string() == qc2.to_string());
+    ASSERT(qc1.get_measurement_map() == qc2.get_measurement_map());
+  }
+  
+  return true;
+}
+
+bool test_circuit_insert() {
+  constexpr size_t nqb = 16;
+
+  for (size_t i = 0; i < 10; i++) {
+    QuantumCircuit qc1(nqb, nqb);
+    QuantumCircuit qc2(nqb, nqb);
+    std::vector<size_t> removed;
+    for (size_t d = 0; d < 50; d++) {
+      if (randf() < 0.8) { // Unitary
+        size_t n = randi(1, 3);
+        PauliString P = PauliString::randh(n);
+        double theta = randf(0, 2*M_PI);
+
+        Qubits qubits(n);
+        std::iota(qubits.begin(), qubits.end(), randi(0, nqb - n - 1));
+        size_t control = randi(0, nqb);
+        qc1.rp(qubits, P, theta, control);
+        if (randf() < 0.2) {
+          removed.push_back(d);
+        } else {
+          qc2.rp(qubits, P, theta, control);
+        }
+      } else {
+        size_t n = randi(1, 3);
+        PauliString P = PauliString::randh(n);
+        double theta = randf(0, 2*M_PI);
+
+        Qubits qubits(n);
+        std::iota(qubits.begin(), qubits.end(), randi(0, nqb - n - 1));
+        size_t target = randi(0, nqb);
+        qc1.add_measurement(qubits, P, std::nullopt, target);
+        if (randf() < 0.2) {
+          removed.push_back(d);
+        } else {
+          qc2.add_measurement(qubits, P, std::nullopt, target);
+        }
+      }
+    }
+
+    std::reverse(removed.begin(), removed.end());
+
+    for (auto d : removed) {
+      qc1.erase(d);
+    }
+
+    ASSERT(qc1.to_string() == qc2.to_string());
+    ASSERT(qc1.get_measurement_map() == qc2.get_measurement_map());
+  }
+  
+  return true;
+}
+
+bool test_get_measurement() {
+  constexpr size_t nqb = 8;
+  QuantumCircuit qc(nqb);
+
+  for (size_t i = 0; i < 10; i++) {
+    if (randf() < 0.5) {
+      size_t n = randi(1, 3);
+      qc.add_measurement(random_qubits(nqb, n), PauliString::randh(n));
+    } else {
+      size_t n = randi(1, 3);
+      qc.rp(random_qubits(nqb, n), PauliString::randh(n));
+    }
+  }
+
+  auto m = qc.get_measurement(0);
+
+  std::cout << qc << "\n";
+
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   std::map<std::string, TestResult> tests;
   std::set<std::string> test_names;
@@ -530,6 +655,8 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_dag_ltr);
   ADD_TEST(test_simplify_deep);
   ADD_TEST(test_classical_circuit);
+  ADD_TEST(test_circuit_erase);
+  ADD_TEST(test_get_measurement);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";
