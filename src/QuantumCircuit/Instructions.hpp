@@ -422,7 +422,6 @@ class FreeFermionGate {
       size_t i2 = std::max(i, j);
       double sign = (i1 != i && !adj) ? -1.0 : 1.0;
       double amplitude = sign * a;
-      std::tuple<size_t, size_t, bool> idx = {i1, i2, adj};
       terms.push_back({i, j, amplitude, adj});
     }
 
@@ -528,6 +527,8 @@ struct ClassicalInstruction {
         return fmt::format("OR {} {} {}", bits[0], bits[1], bits[2]);
       } case (OpType::XOR): {
         return fmt::format("OR {} {} {}", bits[0], bits[1], bits[2]);
+      } case (OpType::NAND): {
+        return fmt::format("NAND {} {} {}", bits[0], bits[1], bits[2]);
       } case (OpType::CLEAR): {
         return fmt::format("CLEAR {}", bits[0]);
       }
@@ -542,7 +543,7 @@ struct ConditionedInstruction {
   ConditionedInstruction()=default;
   ConditionedInstruction(const QuantumInstruction& inst) : inst(inst) { }
   ConditionedInstruction(const QuantumInstruction& inst, ControlOpt control, TargetOpt target)
-    : inst(inst), target(target), control(control) { }
+    : inst(inst), control(control), target(target) { }
 
   QuantumInstruction inst;
   ControlOpt control;
