@@ -4,6 +4,12 @@ include(CMakeFindDependencyMacro)
 find_dependency(fmt REQUIRED)
 find_dependency(Eigen3 3.4 REQUIRED NO_MODULE)
 
+set(MKL_INTERFACE_FULL "intel_lp64")
+find_dependency(MKL CONFIG)
+if(NOT MKL_FOUND)
+    find_dependency(OpenBLAS CONFIG REQUIRED)
+endif()
+
 set(qutils_INCLUDE_DIR "@CMAKE_INSTALL_PREFIX@/include")
 set(qutils_LIBRARY_DIR "@CMAKE_INSTALL_PREFIX@/lib")
 
