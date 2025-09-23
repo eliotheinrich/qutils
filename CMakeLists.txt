@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.26)
 
-project(qutils LANGUAGES CXX)
+project(qutils VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 
@@ -15,8 +15,6 @@ endif()
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -g") 
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
-set(CMAKE_PREFIX_PATH $ENV{CMAKE_PREFIX_PATH})
-string(REPLACE ":" ";" CMAKE_PREFIX_PATH "${CMAKE_PREFIX_PATH}")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
@@ -25,14 +23,8 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 # ------ Fetching externals ------ #
 # -------------------------------- #
 
-foreach(PATH IN LISTS CMAKE_PREFIX_PATH)
-    include_directories("${PATH}/include")
-endforeach()
-
 option(QUTILS_BUILD_TESTS "Build qutils tests" ON)
 option(QUTILS_BUILD_PYTHON "Build Python bindings" OFF)
-
-add_definitions(-DFMT_HEADER_ONLY)
 
 include(FetchContent)
 
@@ -45,27 +37,16 @@ FetchContent_Declare(
 )
 list(APPEND EXTERNALS glaze)
 
-FetchContent_Declare(
-    eigen
-    GIT_REPOSITORY https://gitlab.com/libeigen/eigen
-    GIT_TAG 3.4
-    GIT_SHALLOW TRUE
-    GIT_PROGRESS TRUE
-)
-set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
-set(EIGEN_BUILD_DOC OFF)
-set(BUILD_TESTING OFF)
-set(EIGEN_BUILD_PKGCONFIG OFF)
-list(APPEND EXTERNALS eigen)
-
 FetchContent_MakeAvailable(${EXTERNALS})
+
+find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+find_package(fmt REQUIRED)
 
 # -------------------------------- #
 # -------- Adding code ----------- #
 # -------------------------------- #
 
 include_directories(
-    ${eigen_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/src
     ${glaze_SOURCE_DIR}/include
 )
@@ -75,10 +56,55 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/src/QuantumState)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/FreeFermion)
 add_subdirectory(${PROJECT_SOURCE_DIR}/src/CliffordState)
 
+foreach (tgt IN ITEMS quantum_state quantum_circuit free_fermion clifford_state)
+    target_link_libraries(${tgt} PUBLIC Eigen3::Eigen)
+    target_link_libraries(${tgt} PUBLIC fmt::fmt)
+endforeach()
+
 if (QUTILS_BUILD_TESTS)
     add_subdirectory(${PROJECT_SOURCE_DIR}/src/Tests)
 endif()
 
 if (QUTILS_BUILD_PYTHON)
     add_subdirectory(${PROJECT_SOURCE_DIR}/src/Python)
+else()
+    include(CMakePackageConfigHelpers)
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/qutilsConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY AnyNewerVersion
+    )
+
+    configure_package_config_file(
+        "${CMAKE_CURRENT_LIST_DIR}/cmake/qutilsConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/qutilsConfig.cmake"
+        INSTALL_DESTINATION lib/cmake/qutils
+    )
+
+    install(TARGETS quantum_circuit quantum_state free_fermion clifford_state 
+            EXPORT qutilsTargets
+            ARCHIVE DESTINATION lib
+            LIBRARY DESTINATION lib
+            RUNTIME DESTINATION bin
+    )
+
+    install(EXPORT qutilsTargets
+        FILE qutilsTargets.cmake
+        NAMESPACE qutils::
+        DESTINATION lib/cmake/qutils
+    )
+
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/qutilsConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/qutilsConfigVersion.cmake"
+        DESTINATION lib/cmake/qutils
+    )
+
+    install(
+        DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/
+        DESTINATION include/qutils
+        FILES_MATCHING 
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+    )
 endif()

@@ -88,7 +88,7 @@ double Statevector::entanglement(const QubitSupport& support, uint32_t index) {
     Eigen::VectorXd probs = schmidt.array().square();
     std::vector<double> p(probs.data(), probs.data() + probs.size());
 
-    return renyi_entropy(index, p);
+    return renyi_entropy(index, p, 2);
   } else if (support_contiguous(qubitsB) && qubitsB[0] == 0) {
     return entanglement(qubitsB, index);
   } else {

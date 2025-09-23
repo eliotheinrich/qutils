@@ -542,7 +542,7 @@ struct ConditionedInstruction {
   ConditionedInstruction()=default;
   ConditionedInstruction(const QuantumInstruction& inst) : inst(inst) { }
   ConditionedInstruction(const QuantumInstruction& inst, ControlOpt control, TargetOpt target)
-    : inst(inst), target(target), control(control) { }
+    : inst(inst), control(control), target(target) { }
 
   QuantumInstruction inst;
   ControlOpt control;
