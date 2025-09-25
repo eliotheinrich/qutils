@@ -246,7 +246,8 @@ MeasurementData Statevector::measure(const Measurement& m) {
     uint32_t q = std::ranges::min(qubits);
 
     EvolveOpts opts;
-    opts.simplify_circuit = false;
+    opts.simplify_circuit = true;
+    opts.dag_direction = "left";
     evolve(qc, qubits, opts);
     auto result = mzr(q, m.outcome);
     evolve(qc.adjoint(), qubits, opts);
@@ -297,7 +298,8 @@ MeasurementData Statevector::weak_measure(const WeakMeasurement& m) {
     uint32_t q = std::ranges::min(qubits);
 
     EvolveOpts opts;
-    opts.simplify_circuit = false;
+    opts.simplify_circuit = true;
+    opts.dag_direction = "left";
     evolve(qc, qubits, opts);
     auto result = wmzr(q, beta, m.outcome);
     evolve(qc.adjoint(), qubits, opts);
