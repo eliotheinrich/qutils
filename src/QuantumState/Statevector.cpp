@@ -198,8 +198,8 @@ MeasurementData Statevector::mzr(uint32_t q, std::optional<bool> outcome_opt) {
     return {outcome, prob_outcome};
   } else {
     double prob_zero = mzr_prob(q, 0);
-    bool b = !(randf() < prob_zero);
-
+    double r = randf();
+    bool b = r > prob_zero;
     return mzr(q, b);
   }
 }
@@ -210,31 +210,49 @@ MeasurementData Statevector::measure(const Measurement& m) {
     return mzr(qubits[0], m.outcome);
   }
 
-  PauliString pauli = m.get_pauli();
-  Eigen::MatrixXcd pm = pauli.to_matrix();
-  Eigen::MatrixXcd id = Eigen::MatrixXcd::Identity(1u << qubits.size(), 1u << qubits.size());
+  if (qubits.size() < 3) {
+    PauliString pauli = m.get_pauli();
+    Eigen::MatrixXcd pm = pauli.to_matrix();
+    Eigen::MatrixXcd id = Eigen::MatrixXcd::Identity(1u << qubits.size(), 1u << qubits.size());
 
-  Eigen::MatrixXcd proj0 = (id + pm)/2.0; // false
-  Eigen::MatrixXcd proj1 = (id - pm)/2.0; // true
+    Eigen::MatrixXcd proj0 = (id + pm)/2.0; // false
+    Eigen::MatrixXcd proj1 = (id - pm)/2.0; // true
 
-  double prob_zero = (1.0 + expectation(pauli.superstring(qubits, num_qubits))).real()/2.0;
+    double prob_zero = (1.0 + expectation(pauli.superstring(qubits, num_qubits))).real()/2.0;
 
-  bool b;
-  if (m.is_forced()) {
-    b = m.get_outcome();
+    bool b;
+    if (m.is_forced()) {
+      b = m.get_outcome();
+    } else {
+      double r = randf();
+      b = (r > prob_zero);
+    }
+
+    check_forced_measure(b, prob_zero);
+    Eigen::MatrixXcd proj = b ? proj1 / std::sqrt(1.0 - prob_zero) : proj0 / std::sqrt(prob_zero);
+    evolve(proj, qubits);
+    normalize();
+
+    double prob_outcome = b ? (1.0 - prob_zero) : prob_zero;
+
+    return {b, prob_outcome};
   } else {
-    double r = randf();
-    b = (r > prob_zero);
+    PauliString pauli = m.pauli.value();
+    QuantumCircuit qc(qubits.size());
+
+    auto args = argsort(qubits);
+    m.pauli.value().reduce(true, std::make_pair(&qc, args));
+
+    uint32_t q = std::ranges::min(qubits);
+
+    EvolveOpts opts;
+    opts.simplify_circuit = false;
+    evolve(qc, qubits, opts);
+    auto result = mzr(q, m.outcome);
+    evolve(qc.adjoint(), qubits, opts);
+
+    return result;
   }
-
-  check_forced_measure(b, prob_zero);
-  Eigen::MatrixXcd proj = b ? proj1 / std::sqrt(1.0 - prob_zero) : proj0 / std::sqrt(prob_zero);
-  evolve(proj, qubits);
-  normalize();
-
-  double prob_outcome = b ? (1.0 - prob_zero) : prob_zero;
-
-  return {b, prob_outcome};
 }
 
 MeasurementData Statevector::weak_measure(const WeakMeasurement& m) {
@@ -243,33 +261,49 @@ MeasurementData Statevector::weak_measure(const WeakMeasurement& m) {
   }
 
   double beta = m.beta.value();
-
   Qubits qubits = m.qubits;
-  PauliString pauli = m.get_pauli();
+  if (qubits.size() < 3) {
+    PauliString pauli = m.get_pauli();
 
-  // <psi | e^(2*beta*P)/(2*cosh(2*beta)) |psi> = (1 + tanh(2*beta)*<P>)/2
-  double prob_zero = (1 + std::tanh(2*beta) * expectation(pauli.superstring(qubits, num_qubits)).real())/2.0;
+    // <psi | e^(2*beta*P)/(2*cosh(2*beta)) |psi> = (1 + tanh(2*beta)*<P>)/2
+    double prob_zero = (1 + std::tanh(2*beta) * expectation(pauli.superstring(qubits, num_qubits)).real())/2.0;
 
-  bool b;
-  if (m.is_forced()) {
-    b = m.get_outcome();
+    bool b;
+    if (m.is_forced()) {
+      b = m.get_outcome();
+    } else {
+      double r = randf();
+      b = (r >= prob_zero);
+    }
+
+    Eigen::MatrixXcd t = pauli.to_matrix();
+    if (b) {
+      t = -t;
+    }
+
+    Eigen::MatrixXcd proj = (beta*t).exp();
+
+    evolve(proj, qubits);
+    normalize();
+
+    double prob_outcome = b ? (1.0 - prob_zero) : prob_zero;
+    return {b, prob_outcome};
   } else {
-    double r = randf();
-    b = (r >= prob_zero);
+    QuantumCircuit qc(qubits.size());
+
+    auto args = argsort(qubits);
+    m.pauli.value().reduce(true, std::make_pair(&qc, args));
+
+    uint32_t q = std::ranges::min(qubits);
+
+    EvolveOpts opts;
+    opts.simplify_circuit = false;
+    evolve(qc, qubits, opts);
+    auto result = wmzr(q, beta, m.outcome);
+    evolve(qc.adjoint(), qubits, opts);
+
+    return result;
   }
-
-  Eigen::MatrixXcd t = pauli.to_matrix();
-  if (b) {
-    t = -t;
-  }
-
-  Eigen::MatrixXcd proj = (beta*t).exp();
-
-  evolve(proj, qubits);
-  normalize();
-
-  double prob_outcome = b ? (1.0 - prob_zero) : prob_zero;
-  return {b, prob_outcome};
 }
 
 void Statevector::evolve(const Eigen::MatrixXcd &gate, const Qubits& qubits) {

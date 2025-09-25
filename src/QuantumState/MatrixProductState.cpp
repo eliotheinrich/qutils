@@ -709,7 +709,7 @@ class MatrixProductStateImpl {
         sv_squared[i] = std::pow(elt(sv, i+1, i+1), 2);
       }
 
-      return renyi_entropy(index, sv_squared);
+      return renyi_entropy(index, sv_squared, 2);
     }
 
     ITensor left_boundary_tensor(size_t i) const {

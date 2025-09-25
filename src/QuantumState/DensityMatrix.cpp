@@ -107,7 +107,6 @@ std::shared_ptr<QuantumState> DensityMatrix::partial_trace(const Qubits& qubits)
   return std::make_shared<DensityMatrix>(std::move(partial_trace_density_matrix(qubits)));
 }
 
-// TODO should be base 2
 double DensityMatrix::entanglement(const QubitSupport& support, uint32_t index) {
 	// If number of qubits is larger than half the system, take advantage of the fact that 
 	// S_A = S_\bar{A} to compute entanglement for the smaller of A and \bar{A}
@@ -155,9 +154,9 @@ double DensityMatrix::entanglement(const QubitSupport& support, uint32_t index) 
 				s -= eigenvalue*std::log(eigenvalue);
 			}
 		}
-		return s;
+		return s/std::log(2);
 	} else {
-		return 1./(1. - index) * std::log(rho_a.data.pow(index).trace().real());
+		return 1./(1. - index) * std::log(rho_a.data.pow(index).trace().real())/std::log(2);
 	}
 }
 

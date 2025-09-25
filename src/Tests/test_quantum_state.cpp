@@ -545,6 +545,34 @@ bool test_mps_measure() {
   return true;
 }
 
+bool test_small() {
+  size_t nqb = 4;
+  QuantumCircuit qc(nqb);
+  for (size_t i = 0; i < nqb; i++) {
+    qc.h(i);
+  }
+
+  Statevector psi(nqb);
+  MatrixProductState mps(nqb, 1u << nqb);
+  psi.evolve(qc);
+  mps.evolve(qc);
+
+  PauliString P(nqb);
+  for (size_t i = 0; i < nqb; i++) {
+    P.set_z(i, 1);
+  }
+  auto [b1, p1] = psi.QuantumState::measure({0,1,2,3}, P, true);
+  auto [b2, p2] = mps.QuantumState::measure({0,1,2,3}, P, true);
+
+
+  ASSERT((b1 == b2) && is_close(p1, p2), fmt::format("Different measurement outcomes observed for P = {}", P));
+
+  std::cout << psi.to_string() << "\n";
+  std::cout << mps.to_string() << "\n";
+
+  return true;
+}
+
 bool test_mps_weak_measure() {
   constexpr size_t nqb = 6;
 
@@ -1801,6 +1829,8 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_sparse_pauli_obs);
   ADD_TEST(test_pauli_evolution);
   //ADD_TEST(test_chp_probs);
+
+  ADD_TEST(test_small);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";
