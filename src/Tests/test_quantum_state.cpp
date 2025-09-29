@@ -1682,13 +1682,15 @@ bool test_sparse_pauli_obs() {
     std::complex<double> c1_rho = 0.0;
     std::complex<double> c1_mps = 0.0;
     for (size_t j = 0; j < num_terms; j++) {
-      PauliString P = PauliString::randh(nqb);
+      int k = randi(1, nqb);
+      Qubits qubits = random_qubits(nqb, k);
+      PauliString P = PauliString::randh(k);
       std::complex<double> a(randf(), randf());
-      obs.push_back({a, P});
+      obs.push_back({a, P, qubits});
 
-      c1_psi += a*psi.expectation(P);
-      c1_rho += a*rho.expectation(P);
-      c1_mps += a*mps.expectation(P);
+      c1_psi += a*psi.expectation(P.superstring(qubits, nqb));
+      c1_rho += a*rho.expectation(P.superstring(qubits, nqb));
+      c1_mps += a*mps.expectation(P.superstring(qubits, nqb));
     }
 
     std::complex<double> c2_psi = psi.QuantumState::expectation(obs);

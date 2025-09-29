@@ -431,7 +431,7 @@ class PauliString {
     }
 };
 
-using SparsePauliObs = std::vector<std::pair<std::complex<double>, PauliString>>;
+using SparsePauliObs = std::vector<std::tuple<std::complex<double>, PauliString, Qubits>>;
 
 namespace fmt {
   template <>

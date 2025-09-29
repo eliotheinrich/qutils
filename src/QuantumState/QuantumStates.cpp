@@ -81,8 +81,9 @@ std::vector<std::vector<double>> QuantumState::partial_probabilities(const std::
 
 std::complex<double> QuantumState::expectation(const SparsePauliObs& obs) const {
   std::complex<double> c = 0.0;
-  for (const auto& [a, P] : obs) {
-    c += a*expectation(P);
+  for (const auto& [a, pauli, support] : obs) {
+    PauliString p = pauli.superstring(support, num_qubits);
+    c += a*expectation(p);
   }
 
   return c;
