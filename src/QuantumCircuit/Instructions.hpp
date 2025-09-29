@@ -458,10 +458,8 @@ struct PauliTerm {
   Qubits support;
 };
 class CommutingHamiltonianGate {
-  private:
-    uint32_t num_qubits;
-
   public:
+    uint32_t num_qubits;
     std::vector<PauliTerm> terms;
     std::optional<double> t;
     bool adj;

@@ -259,11 +259,17 @@ class QuantumCircuit {
     std::vector<size_t> get_measurement_map() const {
       return measurement_map;
     }
+    void set_measurement_map(const std::vector<size_t>& map) {
+      measurement_map = map;
+    }
     std::variant<Measurement, WeakMeasurement> get_measurement(size_t i) const;
 
     size_t get_num_parameters() const;
     std::vector<size_t> get_parameter_map() const {
       return parameter_map;
+    }
+    void set_parameter_map(const std::vector<size_t>& map) {
+      parameter_map = map;
     }
 
     bool instruction_is_measurement(size_t i) const;

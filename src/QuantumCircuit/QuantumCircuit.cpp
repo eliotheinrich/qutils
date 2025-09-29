@@ -249,8 +249,8 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
     n++;
   }
 
-  circuit.measurement_map = new_measurement_map;
-  circuit.parameter_map = new_parameter_map;
+  circuit.set_measurement_map(new_measurement_map);
+  circuit.set_parameter_map(new_parameter_map);
   return circuit;
 }
 
@@ -289,14 +289,109 @@ std::optional<std::pair<size_t, size_t>> find_mergeable(const CircuitDAG& dag, c
   return std::nullopt;
 }
 
+Eigen::MatrixXcd term_to_matrix(const PauliTerm& term, double t) {
+  const auto& [a, pauli, qubits] = term;
+  return (gates::i * a * t * pauli.to_matrix());
+}
+
+QuantumCircuit hamiltonian_to_circuit(const CommutingHamiltonianGate& gate) {
+  QuantumCircuit circuit(gate.num_qubits);
+  for (const auto& [a, pauli, qubits] : gate.terms) {
+    Eigen::MatrixXcd U = (gates::i * a * gate.t.value() * pauli.to_matrix()).exp();
+    circuit.add_gate(std::make_shared<MatrixGate>(U, qubits));
+  }
+  return circuit;
+}
+
+QuantumCircuit reduce_commuting_hamiltonians(const QuantumCircuit& self) {
+  QuantumCircuit circuit(self.get_num_qubits(), self.get_num_cbits());
+  std::vector<size_t> measurement_map = self.get_measurement_map();
+  std::vector<size_t> parameter_map = self.get_parameter_map();
+
+  auto add_qinst = [&](const QuantumInstruction& qinst, ControlOpt control, ControlOpt target) {
+		std::visit(quantumcircuit_utils::overloaded {
+			[&](const std::shared_ptr<Gate> gate) {
+        circuit.add_gate(gate, control);
+			},
+      [&](const FreeFermionGate& gate) {
+        circuit.add_gate(gate, control);
+      },
+      [&](const CommutingHamiltonianGate& gate) {
+        size_t pos = circuit.length();
+        // TODO update measurement_map and parameter_map
+        // Converting commuting hamiltonian to a series of gates
+        QuantumCircuit gate_circuit = hamiltonian_to_circuit(gate);
+        if (control) { // All instructions are controlled
+          for (const auto& inst : gate_circuit.instructions) {
+            circuit.add_controlled_instruction(std::get<QuantumInstruction>(inst), control.value());
+          }
+        } else { // No instructions are controlled
+          for (const auto& inst : gate_circuit.instructions) {
+            circuit.add_instruction(inst);
+          }
+        }
+
+        size_t length = gate_circuit.length();
+        for (size_t i = 0; i < measurement_map.size(); i++) {
+          if (measurement_map[i] > pos) {
+            measurement_map[i] += length - 1;
+          }
+        }
+
+        for (size_t i = 0; i < parameter_map.size(); i++) {
+          if (parameter_map[i] > pos) {
+            parameter_map[i] += length - 1;
+          }
+        }
+      },
+			[&](const Measurement& m) { 
+        if (control || target) {
+          circuit.add_instruction(ConditionedInstruction(m, control, target));
+        } else {
+          circuit.add_measurement(m);
+        }
+      },
+      [&](const WeakMeasurement& m) {
+        if (control || target) {
+          circuit.add_instruction(ConditionedInstruction(m, control, target));
+        } else {
+          circuit.add_weak_measurement(m);
+        }
+      }
+		}, qinst);
+  };
+
+  for (const auto& instruction : self.instructions) {
+    std::visit(quantumcircuit_utils::overloaded{
+      [&](const QuantumInstruction& qinst) {
+        add_qinst(qinst, std::nullopt, std::nullopt);
+      },
+      [&](const ClassicalInstruction& clinst) {
+        circuit.add_instruction(clinst);
+      },
+      [&](const ConditionedInstruction& cinst) {
+        add_qinst(cinst.inst, cinst.control, cinst.target);
+      }
+    }, instruction);
+  }
+
+  circuit.set_measurement_map(measurement_map);
+  circuit.set_parameter_map(parameter_map);
+
+  return circuit;
+}
+
 QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
-  CircuitDAG dag = to_dag();
+  // First, turn CommutingHamiltonianGate into regular gates
+  QuantumCircuit circuit = reduce_commuting_hamiltonians(*this);
+
+  CircuitDAG dag = circuit.to_dag();
   auto reversed_dag = make_reversed_dag(dag);
 
   bool merged_any = true;
 
-  std::vector<size_t> measurement_map = this->measurement_map;
-  std::vector<size_t> parameter_map = this->parameter_map;
+  std::vector<size_t> measurement_map = circuit.measurement_map;
+  std::vector<size_t> parameter_map = circuit.parameter_map;
 
   while (merged_any) {
     merged_any = false;
@@ -1018,7 +1113,7 @@ Eigen::MatrixXcd QuantumCircuit::to_matrix(const std::optional<std::vector<doubl
     };
 
     for (const auto& inst : instructions) {
-			std::visit(quantumcircuit_utils::overloaded {
+      std::visit(quantumcircuit_utils::overloaded {
         [&](const QuantumInstruction& qinst) {
           qinst_to_matrix(qinst);
         },

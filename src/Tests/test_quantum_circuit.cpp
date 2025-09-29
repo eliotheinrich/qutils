@@ -626,6 +626,35 @@ bool test_get_measurement() {
   return true;
 }
 
+bool test_simplify_commuting_hamiltonian() {
+  constexpr size_t nqb = 6;
+
+  for (int i = 0; i < 10; i++) {
+    QuantumCircuit qc(nqb);
+
+    CommutingHamiltonianGate gate(nqb, 1.0);
+    for (int j = 0; j < 10; j++) {
+      int k = randi(1, 4);
+      PauliString p = PauliString::randh(k);
+      Qubits qubits = random_qubits(nqb, k);
+      double a = 1.0;
+      gate.add_term(a, p, qubits);
+    }
+
+    qc.add_gate(gate);
+    qc.mzr(0);
+
+    QuantumCircuit simple = qc.simplify(true);
+
+    DensityMatrix rho1(qc);
+    DensityMatrix rho2(simple);
+
+    ASSERT(states_close(rho1, rho2));
+  }
+
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   std::map<std::string, TestResult> tests;
   std::set<std::string> test_names;
@@ -655,6 +684,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_classical_circuit);
   ADD_TEST(test_circuit_erase);
   ADD_TEST(test_get_measurement);
+  ADD_TEST(test_simplify_commuting_hamiltonian);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";
