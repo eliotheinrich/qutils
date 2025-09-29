@@ -456,7 +456,7 @@ PauliString majorana_operator(size_t k, size_t num_qubits) {
 }
 
 std::string FreeFermionGate::label() const {
-  std::string suffix = t ? "" : fmt::format("({:.3f})\n", t.value());
+  std::string suffix = t ? fmt::format("({:.3f})\n", t.value()) : "";
   return fmt::format("MG{}", suffix);
 }
 
@@ -600,7 +600,7 @@ std::string FreeFermionGate::to_string() const {
 }
 
 std::string CommutingHamiltonianGate::label() const {
-  std::string suffix = t ? "" : fmt::format("({:.3f})\n", t.value());
+  std::string suffix = t ? fmt::format("({:.3f})\n", t.value()) : "";
   return fmt::format("CH{}", suffix);
 }
 
