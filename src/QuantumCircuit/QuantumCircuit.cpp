@@ -27,6 +27,9 @@ bool QuantumCircuit::is_clifford() const {
       [](const FreeFermionGate& gate) -> bool { 
         return gate.is_clifford(); 
       },
+      [](const CommutingHamiltonianGate& gate) -> bool {
+        return gate.is_clifford();
+      },
 			[](const Measurement &m) -> bool { 
         return true; 
       },
@@ -370,6 +373,9 @@ void QuantumCircuit::apply_qubit_map(const Qubits& qubits) {
       [&qubits](FreeFermionGate& gate) {
         gate.apply_qubit_map(qubits);
       },
+      [&qubits](CommutingHamiltonianGate& gate) {
+        gate.apply_qubit_map(qubits);
+      },
 			[&qubits](Measurement& m) { 
         Qubits _qubits(m.qubits.size());
         for (size_t q = 0; q < m.qubits.size(); q++) {
@@ -477,6 +483,9 @@ void QuantumCircuit::validate_instruction(const Instruction& inst) const {
       [&](const FreeFermionGate& gate) { 
         validate_qubits(gate.get_support());
       },
+      [&](const CommutingHamiltonianGate& gate) {
+        validate_qubits(gate.get_support());
+      },
       [&](const Measurement& m) { 
         validate_qubits(m.qubits);
       },
@@ -549,6 +558,14 @@ void QuantumCircuit::add_weak_measurement(const WeakMeasurement& m, TargetOpt ta
 }
 
 void QuantumCircuit::add_gate(const FreeFermionGate& gate, ControlOpt control) {
+  if (control) {
+    add_controlled_instruction(gate, control.value());
+  } else {
+    add_instruction(gate);
+  }
+}
+
+void QuantumCircuit::add_gate(const CommutingHamiltonianGate& gate, ControlOpt control) {
   if (control) {
     add_controlled_instruction(gate, control.value());
   } else {
@@ -720,6 +737,18 @@ QuantumCircuit QuantumCircuit::bind_parameters(const std::vector<double>& params
         n += N;
         qc.add_gate(gate.bind_parameters(gate_params));
       },
+      [&qc, &n, &params](const CommutingHamiltonianGate& gate) {
+        size_t N = gate.num_params();
+
+        std::vector<double> gate_params(N);
+
+        for (uint32_t i = 0; i < N; i++) {
+          gate_params[i] = params[i + n];
+        }
+
+        n += N;
+        qc.add_gate(gate.bind_parameters(gate_params));
+      },
       [&qc](const Measurement& m) { 
         qc.add_measurement(m); 
       },
@@ -768,6 +797,9 @@ QuantumCircuit QuantumCircuit::bind_measurement_outcomes(const std::vector<bool>
         throw std::runtime_error("Circuit measurement map is in a bad state. This is a bug.");
       },
       [](const FreeFermionGate& gate) {
+        throw std::runtime_error("Circuit measurement map is in a bad state. This is a bug.");
+      },
+      [](const CommutingHamiltonianGate& gate) {
         throw std::runtime_error("Circuit measurement map is in a bad state. This is a bug.");
       },
       [&](Measurement& m) { 
@@ -821,6 +853,9 @@ MeasurementVariant QuantumCircuit::get_measurement(size_t i) const {
         throw std::runtime_error("Error with measurement_map.");
       },
       [](const FreeFermionGate& gate) -> MeasurementVariant {
+        throw std::runtime_error("Error with measurement_map.");
+      },
+      [](const CommutingHamiltonianGate& gate) -> MeasurementVariant {
         throw std::runtime_error("Error with measurement_map.");
       }
     }, qinst);
@@ -966,6 +1001,10 @@ Eigen::MatrixXcd QuantumCircuit::to_matrix(const std::optional<std::vector<doubl
           Q = embed_unitary(gate->define(), gate->qubits, p) * Q; 
         },
         [&Q, p](const FreeFermionGate& gate) { 
+          auto g = gate.to_gate();
+          Q = embed_unitary(g->define(), g->qubits, p) * Q;
+        },
+        [&Q, p](const CommutingHamiltonianGate& gate) { 
           auto g = gate.to_gate();
           Q = embed_unitary(g->define(), g->qubits, p) * Q;
         },

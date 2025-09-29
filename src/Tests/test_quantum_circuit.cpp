@@ -623,8 +623,6 @@ bool test_get_measurement() {
 
   auto m = qc.get_measurement(0);
 
-  std::cout << qc << "\n";
-
   return true;
 }
 

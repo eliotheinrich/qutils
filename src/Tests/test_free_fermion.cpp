@@ -146,7 +146,7 @@ bool test_add_term() {
 }
 
 bool test_term_to_matrix() {
-  auto majorana_term1 = [](const QuadraticTerm& term, size_t nqb) {
+  auto majorana_term1 = [](const QuadraticFermionTerm& term, size_t nqb) {
     Eigen::MatrixXcd cd1 = fermion_operator(term.i, nqb);
     Eigen::MatrixXcd c2  = fermion_operator(term.j, nqb).adjoint();
 
@@ -156,7 +156,7 @@ bool test_term_to_matrix() {
     return h;
   };
 
-  auto majorana_term2 = [](const QuadraticTerm& term, size_t nqb) {
+  auto majorana_term2 = [](const QuadraticFermionTerm& term, size_t nqb) {
     Eigen::MatrixXcd cd1 = fermion_operator(term.i, nqb);
     Eigen::MatrixXcd cd2 = fermion_operator(term.j, nqb);
 
@@ -169,7 +169,7 @@ bool test_term_to_matrix() {
   // Single-qubit
   for (size_t i = 0; i < 100; i++) {
     double theta = randf(0, 2 * M_PI);
-    QuadraticTerm term;
+    QuadraticFermionTerm term;
     Eigen::Matrix2cd H1;
     Eigen::Matrix2cd H2;
     Eigen::MatrixXcd H3;
@@ -190,7 +190,7 @@ bool test_term_to_matrix() {
   // Two-qubit
   for (size_t i = 0; i < 100; i++) {
     double theta = randf(0, 2 * M_PI);
-    QuadraticTerm term;
+    QuadraticFermionTerm term;
     Eigen::Matrix4cd H1;
     Eigen::Matrix4cd H2;
     Eigen::Matrix4cd H3;
@@ -223,7 +223,7 @@ bool test_term_to_matrix() {
   // Three-qubit
   for (size_t i = 0; i < 100; i++) {
     double theta = randf(0, 2 * M_PI);
-    QuadraticTerm term;
+    QuadraticFermionTerm term;
     Eigen::MatrixXcd H1;
     Eigen::MatrixXcd H2;
     Eigen::MatrixXcd H3;

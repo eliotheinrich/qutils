@@ -545,34 +545,6 @@ bool test_mps_measure() {
   return true;
 }
 
-bool test_small() {
-  size_t nqb = 4;
-  QuantumCircuit qc(nqb);
-  for (size_t i = 0; i < nqb; i++) {
-    qc.h(i);
-  }
-
-  Statevector psi(nqb);
-  MatrixProductState mps(nqb, 1u << nqb);
-  psi.evolve(qc);
-  mps.evolve(qc);
-
-  PauliString P(nqb);
-  for (size_t i = 0; i < nqb; i++) {
-    P.set_z(i, 1);
-  }
-  auto [b1, p1] = psi.QuantumState::measure({0,1,2,3}, P, true);
-  auto [b2, p2] = mps.QuantumState::measure({0,1,2,3}, P, true);
-
-
-  ASSERT((b1 == b2) && is_close(p1, p2), fmt::format("Different measurement outcomes observed for P = {}", P));
-
-  std::cout << psi.to_string() << "\n";
-  std::cout << mps.to_string() << "\n";
-
-  return true;
-}
-
 bool test_mps_weak_measure() {
   constexpr size_t nqb = 6;
 
@@ -1766,6 +1738,47 @@ bool test_pauli_evolution() {
   return true;
 }
 
+bool test_commuting_hamiltonian_gate() {
+  constexpr size_t nqb = 6;
+
+  for (size_t i = 0; i < 10; i++) {
+    CommutingHamiltonianGate gate(nqb, 1.0);
+    Eigen::MatrixXcd H = Eigen::MatrixXcd::Zero(1u << nqb, 1u << nqb);
+
+    for (int j = 0; j < 10; j++) {
+      Qubits qubits = random_qubits(nqb, randi(1, nqb - 1));
+      std::sort(qubits.begin(), qubits.end());
+      PauliString pauli(qubits.size());
+      for (int k = 0; k < qubits.size(); k++) {
+        pauli.set_z(k, 1);
+      }
+
+      double a = M_PI/2;
+      gate.add_term(a, pauli, qubits);
+      H += embed_unitary(a * pauli.to_matrix(), qubits, nqb);
+    }
+
+    Eigen::MatrixXcd U = (gates::i * gate.t.value() * H).exp();
+
+    QuantumCircuit qc(nqb);
+    for (int i = 0; i < nqb; i++) {
+      qc.h(i);
+    }
+
+    Statevector psi1(nqb);
+    psi1.evolve(qc);
+    psi1.evolve(U);
+
+    Statevector psi2(nqb);
+    psi2.evolve(qc);
+    psi2.evolve(gate);
+
+    ASSERT(states_close(psi1, psi2));
+  }
+
+  return true;
+}
+
 using TestResult = std::tuple<bool, int>;
 
 #define ADD_TEST(x)                                                               \
@@ -1828,9 +1841,8 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_measurement_record);
   ADD_TEST(test_sparse_pauli_obs);
   ADD_TEST(test_pauli_evolution);
+  ADD_TEST(test_commuting_hamiltonian_gate);
   //ADD_TEST(test_chp_probs);
-
-  ADD_TEST(test_small);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

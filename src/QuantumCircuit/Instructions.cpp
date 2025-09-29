@@ -493,7 +493,7 @@ Eigen::MatrixXcd FreeFermionGate::to_matrix() const {
   return embed_unitary(gate->define(), gate->qubits, num_qubits);
 }
 
-Eigen::MatrixXcd term_to_matrix(const QuadraticTerm& term) {
+Eigen::MatrixXcd term_to_matrix(const QuadraticFermionTerm& term) {
   Eigen::Matrix2cd sp = (gates::X::value - gates::i*gates::Y::value)/2.0;
   
   size_t N = std::abs(static_cast<int>(term.j) - static_cast<int>(term.i));
@@ -523,7 +523,7 @@ Eigen::MatrixXcd term_to_matrix(const QuadraticTerm& term) {
   return g + g.adjoint();
 }
 
-QubitInterval get_term_support(const QuadraticTerm& term) {
+QubitInterval get_term_support(const QuadraticFermionTerm& term) {
   uint32_t i = std::min(term.i, term.j);
   uint32_t j = std::max(term.i, term.j);
 
@@ -599,12 +599,105 @@ std::string FreeFermionGate::to_string() const {
   return fmt::format("{} + h.c.", fmt::join(s, " + "));
 }
 
+std::string CommutingHamiltonianGate::label() const {
+  std::string suffix = t ? "" : fmt::format("({:.3f})\n", t.value());
+  return fmt::format("CH{}", suffix);
+}
+
+CommutingHamiltonianGate CommutingHamiltonianGate::bind_parameters(const std::vector<double>& params) const {
+  CommutingHamiltonianGate gate(*this);
+  if (params.size() == 0) {
+    if (gate.t) { 
+      return std::move(gate);
+    } else {
+      throw std::runtime_error("CommutingHamiltonianGate has unbound parameter, but was passed no parameters to bind.");
+    }
+  } else if (params.size() == 1) {
+    if (gate.t) {
+      throw std::runtime_error("CommutingHamiltonianGate has already bound parameter, but was passed a parameters to bind.");
+    } else {
+      gate.t = params[0];
+      return std::move(gate);
+    }
+  } else {
+    throw std::runtime_error("CommutingHamiltonianGate was passed an incorrect number of parameters to bind.");
+  }
+}
+
+void CommutingHamiltonianGate::apply_qubit_map(const Qubits& qubits) {
+  for (auto& [a, p, support] : terms) {
+    for (int i = 0; i < support.size(); i++) {
+      support[i] = qubits[support[i]];
+    }
+  }
+}
+
+Eigen::MatrixXcd CommutingHamiltonianGate::to_matrix() const {
+  auto gate = to_gate();
+  auto m = gate->define();
+  return embed_unitary(gate->define(), gate->qubits, num_qubits);
+}
+
+Eigen::MatrixXcd term_to_matrix(const PauliTerm& term) {
+  return term.a * term.pauli.to_matrix();
+}
+
+Qubits CommutingHamiltonianGate::get_support() const {
+  std::set<uint32_t> support;
+
+  // Get total support
+  for (const auto& term : terms) {
+    Qubits term_support = term.support;
+    for (auto q : term_support) {
+      support.insert(q);
+    }
+  }
+
+  return Qubits(support.begin(), support.end());
+}
+
+std::shared_ptr<Gate> CommutingHamiltonianGate::to_gate() const {
+  if (!t) {
+    throw std::runtime_error("Cannot convert a CommutingHamiltonianGate with unbound parameter to a matrix. Call bind_parameters([t]) first.");
+  }
+
+  Qubits support = get_support();
+  CommutingHamiltonianGate gate(*this);
+  Qubits map = reduced_support(support, num_qubits);
+  gate.apply_qubit_map(map);
+
+  size_t N = support.size();
+  Eigen::MatrixXcd H = Eigen::MatrixXcd::Zero(1u << N, 1u << N);
+  for (const auto& term : gate.terms) {
+    H += embed_unitary(term_to_matrix(term), term.support, N);
+  }
+
+  Eigen::MatrixXcd U = (gates::i * t.value() * H).exp();
+  return std::make_shared<MatrixGate>(U, support);
+}
+
+std::string CommutingHamiltonianGate::to_string() const {
+  if (terms.size() == 0) {
+    return "";
+  }
+
+  std::vector<std::string> s;
+  for (const auto& term : terms) {
+    s.push_back(fmt::format("{:.3f}*{} ({})", term.a, term.pauli, term.support));
+  }
+
+  return fmt::format("{} {}", fmt::join(s, " + "), adj ? "(dag)" : "");
+}
+
 QuantumInstruction copy_quantum_instruction(const QuantumInstruction& qinst) {
   return std::visit(quantumcircuit_utils::overloaded {
     [](std::shared_ptr<Gate> gate) {
       return QuantumInstruction(gate->clone());
     },
     [](const FreeFermionGate& gate) {
+      return QuantumInstruction(gate);;
+    },
+    [](const CommutingHamiltonianGate& gate) {
       return QuantumInstruction(gate);;
     },
     [](const Measurement& m) {
@@ -732,6 +825,9 @@ size_t get_quantum_instruction_num_params(const QuantumInstruction& qinst) {
     [](const FreeFermionGate& gate) -> size_t {
       return gate.num_params();
     },
+    [](const CommutingHamiltonianGate& gate) -> size_t {
+      return gate.num_params();
+    },
     [](const Measurement& m) -> size_t { 
       return 0;
     },
@@ -761,6 +857,9 @@ Qubits get_quantum_instruction_support(const QuantumInstruction& qinst) {
       return gate->qubits;
     },
     [](const FreeFermionGate& gate) {
+      return gate.get_support();
+    },
+    [](const CommutingHamiltonianGate& gate) {
       return gate.get_support();
     },
     [](const Measurement& m) { 
@@ -813,6 +912,7 @@ bool quantum_instruction_is_unitary(const QuantumInstruction& qinst) {
   return std::visit(quantumcircuit_utils::overloaded {
     [](std::shared_ptr<Gate> gate) { return true; },
     [](const FreeFermionGate& gate) { return true; },
+    [](const CommutingHamiltonianGate& gate) { return true; },
     [](const Measurement& m) { return false; },
     [](const WeakMeasurement& m) { return false; }
   }, qinst);
@@ -839,6 +939,9 @@ Instruction instruction_adjoint(const Instruction& inst) {
         return gate->adjoint();
       },
       [](const FreeFermionGate& gate) -> QuantumInstruction {
+        return gate.adjoint();
+      },
+      [](const CommutingHamiltonianGate& gate) -> QuantumInstruction {
         return gate.adjoint();
       },
       [](const Measurement& m) -> QuantumInstruction {

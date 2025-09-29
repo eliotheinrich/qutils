@@ -538,6 +538,9 @@ void PauliString::evolve(const QuantumCircuit& qc) {
       [](const FreeFermionGate& gate) {
         throw std::runtime_error("Cannot evolve arbitrary fermionic gate on PauliString.");
       },
+      [](const CommutingHamiltonianGate& gate) {
+        throw std::runtime_error("Cannot evolve arbitrary hamiltonian gate on PauliString.");
+      },
       [](const Measurement& m) { 
         throw std::runtime_error("Cannot do measure on a single PauliString.");
       },

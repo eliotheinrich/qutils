@@ -259,6 +259,16 @@ void QuantumState::evolve(const FreeFermionGate& gate) {
   evolve(gate.to_gate());
 }
 
+void QuantumState::evolve(const CommutingHamiltonianGate& gate) {
+  QuantumCircuit circuit(num_qubits);
+  for (const auto& [a, pauli, qubits] : gate.terms) {
+    Eigen::MatrixXcd U = (gates::i * a * gate.t.value() * pauli.to_matrix()).exp();
+    circuit.add_gate(U, qubits);
+  }
+
+  evolve(circuit);
+}
+
 std::optional<MeasurementData> QuantumState::evolve(const QuantumInstruction& inst) {
   return std::visit(quantumcircuit_utils::overloaded{
     [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
@@ -266,6 +276,10 @@ std::optional<MeasurementData> QuantumState::evolve(const QuantumInstruction& in
       return std::nullopt;
     },
     [this](const FreeFermionGate& gate) -> std::optional<MeasurementData> {
+      evolve(gate);
+      return std::nullopt;
+    },
+    [this](const CommutingHamiltonianGate& gate) -> std::optional<MeasurementData> {
       evolve(gate);
       return std::nullopt;
     },

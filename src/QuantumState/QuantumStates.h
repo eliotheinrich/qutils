@@ -147,6 +147,7 @@ class QuantumState : public EntanglementEntropyState, public std::enable_shared_
 		virtual void evolve_diagonal(const Eigen::VectorXcd& gate);
 
     virtual void evolve(const FreeFermionGate& gate);
+    virtual void evolve(const CommutingHamiltonianGate& gate);
 
 		virtual std::optional<MeasurementData> evolve(const QuantumInstruction& inst);
 

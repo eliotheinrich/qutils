@@ -51,6 +51,9 @@ std::optional<MeasurementData> CliffordState::evolve(const QuantumInstruction& i
       [](const FreeFermionGate& gate) -> std::optional<MeasurementData> {
         throw std::runtime_error("Cannot evolve FreeFermionGate on Clifford states.");
       },
+      [](const CommutingHamiltonianGate& gate) -> std::optional<MeasurementData> {
+        throw std::runtime_error("Cannot evolve CommutingHamiltonianGate on Clifford states.");
+      },
       [this](const Measurement& m) -> std::optional<MeasurementData> { 
         return measure(m);
       },

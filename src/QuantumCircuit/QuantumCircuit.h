@@ -143,6 +143,7 @@ class QuantumCircuit {
     }
 
     void add_gate(const FreeFermionGate& gate, ControlOpt control=std::nullopt);
+    void add_gate(const CommutingHamiltonianGate& gate, ControlOpt control=std::nullopt);
     void add_gate(const std::shared_ptr<Gate> &gate, ControlOpt control=std::nullopt);
     void add_gate(const Eigen::MatrixXcd& gate, const Qubits& qubits, ControlOpt control=std::nullopt);
     void add_gate(const Eigen::Matrix2cd& gate, uint32_t qubit, ControlOpt control=std::nullopt);

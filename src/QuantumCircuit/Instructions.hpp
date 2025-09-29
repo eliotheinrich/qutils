@@ -385,22 +385,22 @@ static inline bool is_unitary(const Eigen::MatrixXcd& U) {
   return (U.adjoint() * U).isApprox(I);
 }
 
-struct QuadraticTerm {
+struct QuadraticFermionTerm {
   uint32_t i;
   uint32_t j;
   double a;
   bool adj;
 };
 
-Eigen::MatrixXcd term_to_matrix(const QuadraticTerm& term);
-QubitInterval get_term_support(const QuadraticTerm& term);
+Eigen::MatrixXcd term_to_matrix(const QuadraticFermionTerm& term);
+QubitInterval get_term_support(const QuadraticFermionTerm& term);
 Eigen::MatrixXcd fermion_operator(size_t k, size_t num_qubits);
 PauliString majorana_operator(size_t k, size_t num_qubits);
 
 class FreeFermionGate {
   private:
     uint32_t num_qubits;
-    std::vector<QuadraticTerm> terms;
+    std::vector<QuadraticFermionTerm> terms;
 
   public:
     std::optional<double> t;
@@ -450,6 +450,66 @@ class FreeFermionGate {
     }
 };
 
+// Gates of the form e^{it(a1*P1 + a2*P2 + ...)} 
+// where P1...PN are Pauli strings, a1...aN are real numbers, and [Pi, Pj] = 0
+struct PauliTerm {
+  double a;
+  PauliString pauli;
+  Qubits support;
+};
+class CommutingHamiltonianGate {
+  private:
+    uint32_t num_qubits;
+
+  public:
+    std::vector<PauliTerm> terms;
+    std::optional<double> t;
+    bool adj;
+
+    CommutingHamiltonianGate()=default;
+    CommutingHamiltonianGate(const CommutingHamiltonianGate& other)=default;
+    
+    CommutingHamiltonianGate(uint32_t num_qubits, std::optional<double> t=std::nullopt, bool adj=false)
+      : num_qubits(num_qubits), t(t), adj(adj) { }
+
+
+    uint32_t num_params() const {
+      return t ? 0 : 1;
+    }
+
+    void add_term(double a, const PauliString& p, const Qubits& qubits) {
+      if (p.num_qubits != qubits.size()) {
+        throw std::runtime_error(fmt::format("Invalid number of qubits passed to CommutingHamiltonianGate.add_term()."));
+      }
+
+      terms.push_back({a, p, qubits});
+    }
+
+    std::string label() const;
+
+    std::string to_string() const;
+
+    Qubits get_support() const;
+    Eigen::MatrixXcd to_matrix() const;
+    std::shared_ptr<Gate> to_gate() const;
+
+    CommutingHamiltonianGate bind_parameters(const std::vector<double>& params) const;
+
+    void apply_qubit_map(const Qubits& qubits);
+
+    Eigen::MatrixXcd to_hamiltonian() const;
+
+    CommutingHamiltonianGate adjoint() const {
+      auto gate = CommutingHamiltonianGate(*this);
+      gate.adj = !gate.adj;
+      return gate;
+    }
+
+    bool is_clifford() const {
+      return false;
+    }
+};
+
 struct Measurement {
   Qubits qubits;
   std::optional<PauliString> pauli;
@@ -478,7 +538,13 @@ struct WeakMeasurement {
   bool get_outcome() const;
 };
 
-using QuantumInstruction = std::variant<std::shared_ptr<Gate>, FreeFermionGate, Measurement, WeakMeasurement>;
+using QuantumInstruction = std::variant<
+  std::shared_ptr<Gate>, 
+  FreeFermionGate, 
+  CommutingHamiltonianGate, 
+  Measurement, 
+  WeakMeasurement
+>;
 
 struct ClassicalInstruction {
   enum class OpType { NOT, AND, OR, XOR, NAND, CLEAR };
@@ -574,6 +640,14 @@ struct fmt::formatter<QuantumInstruction> {
           return gate_str;
         },
         [](const FreeFermionGate& gate) -> std::string {
+          std::string gate_str = gate.label() + " ";
+          for (auto const &q : gate.get_support()) {
+            gate_str += fmt::format("{} ", q);
+          }
+
+          return gate_str;
+        },
+        [](const CommutingHamiltonianGate& gate) -> std::string {
           std::string gate_str = gate.label() + " ";
           for (auto const &q : gate.get_support()) {
             gate_str += fmt::format("{} ", q);
