@@ -28,11 +28,11 @@ class GaussianState : public MagicQuantumState {
     virtual void evolve(const FreeFermionGate& gate) override;
 
     virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override { 
-      return QuantumState::evolve(circuit, opts);
+      return QuantumState::_evolve(circuit, opts);
     }
 
     virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override { 
-      return QuantumState::evolve(circuit, qubits, opts);
+      return QuantumState::_evolve(circuit, qubits, opts);
     }
 
     virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override {

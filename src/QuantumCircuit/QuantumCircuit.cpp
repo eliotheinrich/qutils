@@ -660,6 +660,10 @@ void QuantumCircuit::add_gate(const FreeFermionGate& gate, ControlOpt control) {
   }
 }
 
+void QuantumCircuit::add_gate(const MajoranaGate& gate, ControlOpt control) {
+  add_gate(FreeFermionGate(gate), control);
+}
+
 void QuantumCircuit::add_gate(const CommutingHamiltonianGate& gate, ControlOpt control) {
   if (control) {
     add_controlled_instruction(gate, control.value());

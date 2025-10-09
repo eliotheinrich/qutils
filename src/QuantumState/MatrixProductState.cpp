@@ -591,7 +591,7 @@ class MatrixProductStateImpl {
       }
 
       while (left_ortho_lim < q) {
-        svd_bond(left_ortho_lim++, nullptr, false, InternalDir::Right);
+        svd_bond(left_ortho_lim++, nullptr, true, InternalDir::Right);
         if (left_ortho_lim > right_ortho_lim) {
           right_ortho_lim++;
         }
@@ -604,7 +604,7 @@ class MatrixProductStateImpl {
       }
 
       while (right_ortho_lim > q) {
-        svd_bond(--right_ortho_lim, nullptr, false, InternalDir::Left);
+        svd_bond(--right_ortho_lim, nullptr, true, InternalDir::Left);
         if (right_ortho_lim < left_ortho_lim) {
           left_ortho_lim--;
         }
@@ -887,6 +887,7 @@ class MatrixProductStateImpl {
         _support = std::make_pair(0, num_qubits);
       }
 
+      Qubits qubits = to_qubits(_support);
       QubitInterval interval = to_interval(_support);
 
       uint32_t q1, q2;
@@ -900,20 +901,18 @@ class MatrixProductStateImpl {
 
       std::vector<ITensor> operators;
 
-      Qubits qubits = to_qubits(_support);
       std::set<uint32_t> qubits_set(qubits.begin(), qubits.end());
       for (size_t q = q1; q < q2; q++) {
         Index idx = external_idx(q);
-        ITensor op;
         if (qubits_set.contains(q)) {
-          op = projection_tensor(bits.get(q), prime(idx), idx);
+          operators.push_back(projection_tensor(bits.get(q), prime(idx), idx));
         } else {
-          op = matrix_to_tensor(Eigen::Matrix2cd::Identity(), {prime(idx)}, {idx});
+          operators.push_back(matrix_to_tensor(Eigen::Matrix2cd::Identity(), {prime(idx)}, {idx}));
         }
-
-        operators.push_back(op);
       }
 
+      //std::complex<double> d = partial_expectation(operators, q1, q2, L, R);
+      //return d.real();
       return partial_expectation(operators, q1, q2, L, R).real();
     }
 
@@ -941,13 +940,12 @@ class MatrixProductStateImpl {
     }
 
     std::vector<BitAmplitudes> sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) {
-      int level = orthogonality_level;
       orthogonalize(0);
-      set_orthogonality_level(0);
 
       std::vector<BitAmplitudes> samples;
       
       for (size_t i = 0; i < num_samples; i++) {
+
         double p = 1.0;
         BitString bits(num_qubits);
         ITensor L = left_environment_tensor;
@@ -976,21 +974,21 @@ class MatrixProductStateImpl {
         }
         
         std::vector<double> amplitudes{p};
-        for (const auto& support : supports) {
-          amplitudes.push_back(expectation(bits, support));
-        }
-
         samples.push_back({bits, amplitudes});
       }
 
-      set_orthogonality_level(level);
+      for (size_t i = 0; i < samples.size(); i++) {
+        auto& [bits, amplitudes] = samples[i];
+        for (size_t n = 0; n < supports.size(); n++) {
+          amplitudes.push_back(expectation(bits, supports[n]));
+        }
+      }
+
       return samples;
     }
 
     std::vector<PauliAmplitudes> sample_paulis(const std::vector<QubitSupport>& supports, size_t num_samples) {
-      int level = orthogonality_level;
       orthogonalize(0);
-      set_orthogonality_level(0);
 
       std::vector<PauliAmplitudes> samples(num_samples);
       std::minstd_rand rng(randi());
@@ -1031,18 +1029,17 @@ class MatrixProductStateImpl {
         PauliString pauli(p);
 
         double t = std::sqrt(P*std::pow(2.0, num_qubits));
-        std::vector<double> amplitudes{t};
-
-        // TODO make this more efficient with partial contractions
-        for (const auto& support : supports) {
-          PauliString ps = pauli.substring(support, false);
-          amplitudes.push_back(std::abs(expectation(ps)));
-        }
-
-        samples[k] = {pauli, amplitudes};
+        samples[k] = {pauli, {t}};
       }
 
-      set_orthogonality_level(level);
+      for (size_t i = 0; i < samples.size(); i++) {
+        auto& [pauli, amplitudes] = samples[i];
+        for (size_t n = 0; n < supports.size(); n++) {
+          PauliString ps = pauli.substring(supports[n], false);
+          amplitudes.push_back(std::abs(expectation(ps)));
+        }
+      }
+
       return samples;
     }
 
@@ -1308,14 +1305,7 @@ class MatrixProductStateImpl {
       log.push_back(truncerr);
 
       // Renormalize singular values
-      size_t N = dim(inds(S)[0]);
-      double d = 0.0;
-      for (uint32_t p = 1; p <= N; p++) {
-        std::vector<uint32_t> assignment = {p, p};
-        double c = elt(S, assignment);
-        d += c*c;
-      }
-      S /= std::sqrt(d);
+      S *= 1./norm(S);
 
       // SHOULD BE IDENTITY
       //PrintData(U * conj(prime(U, commonIndex(U, S))));

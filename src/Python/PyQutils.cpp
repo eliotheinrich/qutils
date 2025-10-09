@@ -199,6 +199,9 @@ NB_MODULE(qutils_bindings, m) {
     .def("add_gate", [](QuantumCircuit& self, const FreeFermionGate& gate, ControlOpt control) {
       self.add_gate(gate, control);
     }, "gate"_a, "control"_a=nanobind::none())
+    .def("add_gate", [](QuantumCircuit& self, const MajoranaGate& gate, ControlOpt control) {
+      self.add_gate(gate, control);
+    }, "gate"_a, "control"_a=nanobind::none())
     .def("add_gate", [](QuantumCircuit& self, const CommutingHamiltonianGate& gate, ControlOpt control) {
       self.add_gate(gate, control);
     }, "gate"_a, "control"_a=nanobind::none())
@@ -597,7 +600,19 @@ NB_MODULE(qutils_bindings, m) {
     }, "num_qubits"_a, "t"_a=nanobind::none())
     .def(nanobind::init<const FreeFermionGate&>())
     .def("add_term", &FreeFermionGate::add_term, "i"_a, "j"_a, "a"_a, "adj"_a=true)
+    .def("to_gate", [](const FreeFermionGate& self) { return self.to_gate()->define(); })
     .def("__str__", &FreeFermionGate::to_string);
+
+  nanobind::class_<MajoranaGate>(m, "MajoranaGate")
+    .def("__init__", [](MajoranaGate* gate, 
+      size_t num_qubits, std::optional<double> t
+    ) {
+      new (gate) MajoranaGate(num_qubits, t);
+    }, "num_qubits"_a, "t"_a=nanobind::none())
+    .def(nanobind::init<const MajoranaGate&>())
+    .def("add_term", &MajoranaGate::add_term, "i"_a, "j"_a, "a"_a)
+    .def("to_gate", [](const MajoranaGate& self) { return self.to_gate()->define(); })
+    .def("__str__", &MajoranaGate::to_string);
 
   nanobind::class_<CommutingHamiltonianGate>(m, "CommutingHamiltonianGate")
     .def("__init__", [](CommutingHamiltonianGate* gate, 

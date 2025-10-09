@@ -385,10 +385,51 @@ static inline bool is_unitary(const Eigen::MatrixXcd& U) {
   return (U.adjoint() * U).isApprox(I);
 }
 
-struct QuadraticFermionTerm {
+struct QuadraticMajoranaTerm {
   uint32_t i;
   uint32_t j;
   double a;
+};
+
+// Represents gates of the form e^{itH} where
+// H = (i/2) * \sum_{i,j} A_ij \gamma_i \gamma_j
+// A_ij is antisymmetric, so if the term (i, j, a) is inserted, then the term (j, i, -a)
+// is automatically included
+class MajoranaGate {
+  public:
+    uint32_t num_qubits;
+    bool adj;
+    std::optional<double> t;
+    std::vector<QuadraticMajoranaTerm> terms;
+
+    MajoranaGate()=default;
+    MajoranaGate(const MajoranaGate& other)=default;
+    
+    MajoranaGate(uint32_t num_qubits, std::optional<double> t=std::nullopt, bool adj=false)
+      : num_qubits(num_qubits), t(t), adj(adj) { }
+
+    void add_term(uint32_t i, uint32_t j, double a) {
+      uint32_t i1 = std::min(i, j);
+      uint32_t i2 = std::max(i, j);
+      double sign = (i1 == i) ? 1.0 : -1.0;
+      double amplitude = sign * a;
+      terms.push_back({i1, i2, amplitude});
+    }
+
+    void apply_qubit_map(const Qubits& qubits);
+
+    Qubits get_support() const;
+    std::shared_ptr<Gate> to_gate() const;
+    Eigen::MatrixXcd to_matrix() const;
+
+    std::string label() const;
+    std::string to_string() const;
+};
+
+struct QuadraticFermionTerm {
+  uint32_t i;
+  uint32_t j;
+  std::complex<double> a;
   bool adj;
 };
 
@@ -412,17 +453,18 @@ class FreeFermionGate {
     FreeFermionGate(uint32_t num_qubits, std::optional<double> t=std::nullopt, bool adj=false)
       : num_qubits(num_qubits), t(t), adj(adj) { }
 
+    FreeFermionGate(const MajoranaGate& gate);
 
     uint32_t num_params() const {
       return t ? 0 : 1;
     }
 
-    void add_term(uint32_t i, uint32_t j, double a, bool adj=true) {
-      size_t i1 = std::min(i, j);
-      size_t i2 = std::max(i, j);
-      double sign = (i1 != i && !adj) ? -1.0 : 1.0;
-      double amplitude = sign * a;
-      terms.push_back({i, j, amplitude, adj});
+    void add_term(uint32_t i, uint32_t j, std::complex<double> a, bool adj=true) {
+      uint32_t i1 = std::min(i, j);
+      uint32_t i2 = std::max(i, j);
+      double sign = (i1 != i) ? -1.0 : 1.0;
+      std::complex<double> amplitude = sign * a;
+      terms.push_back({i1, i2, amplitude, adj});
     }
 
     std::string label() const;

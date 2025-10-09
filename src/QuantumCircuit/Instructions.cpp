@@ -455,6 +455,104 @@ PauliString majorana_operator(size_t k, size_t num_qubits) {
   return P;
 }
 
+void MajoranaGate::apply_qubit_map(const Qubits& qubits) {
+  for (auto& term : terms) {
+    term.i = 2*qubits[term.i / 2] + term.i % 2;
+    term.j = 2*qubits[term.j / 2] + term.j % 2;
+  }
+}
+
+Eigen::MatrixXcd MajoranaGate::to_matrix() const {
+  auto gate = to_gate();
+  auto m = gate->define();
+  return embed_unitary(gate->define(), gate->qubits, num_qubits);
+}
+
+Eigen::MatrixXcd term_to_matrix(const QuadraticMajoranaTerm& term) {
+  int n = std::max(term.i, term.j)/2 + 1;
+  PauliString p1 = majorana_operator(term.i, n);
+  PauliString p2 = majorana_operator(term.j, n);
+
+  return term.a * (p1 * p2).to_matrix();
+}
+
+QubitInterval get_term_support(const QuadraticMajoranaTerm& term) {
+  uint32_t i = std::min(term.i, term.j)/2;
+  uint32_t j = std::max(term.i, term.j)/2;
+
+  return std::make_pair(i, j+1);
+}
+
+Qubits MajoranaGate::get_support() const {
+  std::set<uint32_t> support;
+
+  // Get total support
+  for (const auto& term : terms) {
+    Qubits term_support = to_qubits(get_term_support(term));
+    for (auto q : term_support) {
+      support.insert(q);
+    }
+  }
+
+  return Qubits(support.begin(), support.end());
+}
+
+std::shared_ptr<Gate> MajoranaGate::to_gate() const {
+  if (!t) {
+    throw std::runtime_error("Cannot convert a FreeFermionGate with unbound parameter to a matrix. Call bind_parameters([t]) first.");
+  }
+
+  Qubits support = get_support();
+  MajoranaGate gate(*this);
+  Qubits map = reduced_support(support, num_qubits);
+  gate.apply_qubit_map(map);
+
+  size_t N = support.size();
+  Eigen::MatrixXcd H = Eigen::MatrixXcd::Zero(1u << N, 1u << N);
+  for (const auto& term : gate.terms) {
+    H += embed_unitary(term_to_matrix(term), to_qubits(get_term_support(term)), N);
+  }
+
+  Eigen::MatrixXcd U = (-t.value() * H).exp();
+  return std::make_shared<MatrixGate>(U, support);
+}
+
+std::string MajoranaGate::to_string() const {
+  if (terms.size() == 0) {
+    return "";
+  }
+
+  std::vector<std::string> s;
+  for (const auto& term : terms) {
+    s.push_back(fmt::format("{:.3f} a_{} a_{}", term.a, term.i, term.j));
+  }
+
+  return fmt::format("{}", fmt::join(s, " + "));
+}
+
+FreeFermionGate::FreeFermionGate(const MajoranaGate& gate) : num_qubits(gate.num_qubits), t(gate.t), adj(gate.adj) {
+  for (const auto& term : gate.terms) {
+    size_t i = term.i;
+    size_t j = term.j;
+    
+    size_t n = i / 2;
+    size_t m = j / 2;
+    if (i % 2 == 0 && j % 2 == 0) {
+      add_term(n, m, gates::i*term.a, true);
+      add_term(n, m, gates::i*term.a, false);
+    } else if (i % 2 == 0) {
+      add_term(n, m, term.a, true);
+      add_term(n, m,-term.a, false);
+    } else if (j % 2 == 0) {
+      add_term(n, m,-term.a, true);
+      add_term(n, m,-term.a, false);
+    } else {
+      add_term(n, m, gates::i*term.a, true);
+      add_term(n, m,-gates::i*term.a, false);
+    }
+  }
+}
+
 std::string FreeFermionGate::label() const {
   std::string suffix = t ? fmt::format("({:.3f})\n", t.value()) : "";
   return fmt::format("MG{}", suffix);
@@ -494,7 +592,7 @@ Eigen::MatrixXcd FreeFermionGate::to_matrix() const {
 }
 
 Eigen::MatrixXcd term_to_matrix(const QuadraticFermionTerm& term) {
-  Eigen::Matrix2cd sp = (gates::X::value - gates::i*gates::Y::value)/2.0;
+  Eigen::Matrix2cd sm = (gates::X::value - gates::i*gates::Y::value)/2.0;
   
   size_t N = std::abs(static_cast<int>(term.j) - static_cast<int>(term.i));
   std::vector<Eigen::Matrix2cd> p;
@@ -502,16 +600,17 @@ Eigen::MatrixXcd term_to_matrix(const QuadraticFermionTerm& term) {
     p.push_back(gates::Z::value.asDiagonal());
   }
   if (term.adj) {
-    p.push_back(sp.adjoint());
+    p.push_back(sm.adjoint());
   } else {
-    p.push_back(sp);
+    p.push_back(sm);
   }
-  p[0] = sp * p[0];
+  p[0] = sm * p[0];
 
-  double a = term.a;
-  if (term.j < term.i && !term.adj) {
+  std::complex<double> a = term.a;
+  if (term.j < term.i) {
     a = -a;
   }
+
   Eigen::MatrixXcd g = a * p[0];
 
   for (uint32_t i = 1; i < p.size(); i++) {
@@ -526,7 +625,6 @@ Eigen::MatrixXcd term_to_matrix(const QuadraticFermionTerm& term) {
 QubitInterval get_term_support(const QuadraticFermionTerm& term) {
   uint32_t i = std::min(term.i, term.j);
   uint32_t j = std::max(term.i, term.j);
-
   return std::make_pair(i, j+1);
 }
 
@@ -548,7 +646,6 @@ std::shared_ptr<Gate> FreeFermionGate::to_gate() const {
   if (!t) {
     throw std::runtime_error("Cannot convert a FreeFermionGate with unbound parameter to a matrix. Call bind_parameters([t]) first.");
   }
-
 
   Qubits support = get_support();
   FreeFermionGate gate(*this);
@@ -593,7 +690,7 @@ std::string FreeFermionGate::to_string() const {
 
   std::vector<std::string> s;
   for (const auto& term : terms) {
-    s.push_back(fmt::format("{:.3f} c_{}{} c_{}", term.a, term.i, term.adj ? "^dag" : "", term.j));
+    s.push_back(fmt::format("({:.3f} + {:.3f}i) c_{}{} c_{}", std::real(term.a), std::imag(term.a), term.i, term.adj ? "^dag" : "", term.j));
   }
 
   return fmt::format("{} + h.c.", fmt::join(s, " + "));

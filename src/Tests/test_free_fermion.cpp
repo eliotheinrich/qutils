@@ -618,11 +618,6 @@ bool test_majorana_covariance_matrix() {
 bool test_sample_paulis() {
   constexpr size_t nqb = 3;
 
-  int s = randi();
-  Random::seed_rng(s);
-  std::srand(s);
-  std::cout << fmt::format("s = {}\n", s);
-
   QuantumCircuit qc(nqb);
   qc.add_gate(random_free_fermion_gate(nqb, 3*nqb, 1));
 
@@ -634,85 +629,60 @@ bool test_sample_paulis() {
 
   size_t nsamples = 1;
 
-  s = randi();
+  int s = randi();
   Random::seed_rng(s);
   auto paulis1 = state.sample_paulis({}, nsamples);
-  std::cout << "\n\n";
   Random::seed_rng(s);
-  //auto paulis1_ = state.sample_paulis_old({}, nsamples);
-
-  //for (size_t i = 0; i < nsamples; i++) {
-  //  auto [p1, a1] = paulis1[i];
-  //  auto [p2, a2] = paulis1_[i];
-  //  std::cout << fmt::format("{}, {} -> {}, {}\n", p1, p2, a1[0], a2[0]);
-  //  ASSERT(p1 == p2 && is_close(a1[0], a2[0]));
-  //}
-
   auto paulis2 = mps.sample_paulis({}, nsamples);
 
   for (auto [p, a] : paulis1) {
     double c = std::abs(mps.expectation(p));
-    std::cout << fmt::format("<{}> = {:.5f}, {:.5f}\n", p, a[0], c);
     ASSERT(is_close_eps(1e-5, a[0], c), fmt::format("<{}> = {:.5f}, {:.5f}\n", p, a[0], c));
   }
 
   return true;
 }
 
-//bool test_det() {
-//  size_t n = 10;
-//  Eigen::MatrixXd A = Eigen::MatrixXd::Random(n, n);
-//
-//  // Initial computations
-//  Eigen::MatrixXd inv_A = A.inverse();
-//  double det = A.determinant();
-//
-//  for (size_t k = 0; k < 8; k++) {
-//    if (randf() < 0.5) {
-//      size_t q = randi(0, A.cols());
-//      update_inv_and_det_lr(A, inv_A, det, q);
-//    } else {
-//      size_t q = randi(0, A.cols());
-//      update_inv_and_det_resize(A, inv_A, det, q);
-//    }
-//
-//    double det_tmp = A.determinant();
-//    ASSERT(is_close(det, det_tmp));
-//    std::cout << fmt::format("dets = {:.6f}, {:.6f}\n\n\n", det, det_tmp);
-//  }
-//
-//  return true;
-//}
-//
-//bool test_det_case() {
-//  size_t n = 5;
-//  Eigen::MatrixXd A = Eigen::MatrixXd::Random(n, n);
-//  std::cout << A << "\n";
-//
-//  Eigen::MatrixXd inv_A = A.inverse();
-//  double det = A.determinant();
-//
-//  std::vector<size_t> inds = {0, 3};
-//  std::vector<size_t> inds_;
-//  for (size_t i = 0; i < n; i++) {
-//    if (std::find(inds.begin(), inds.end(), i) == inds.end()) {
-//      inds_.push_back(i);
-//    }
-//  }
-//
-//  std::cout << fmt::format("Before modification, det = {}\n", det);
-//  update_inv_and_det_resize(A, inv_A, det, inds[0]);
-//
-//  double det_tmp = A.determinant();
-//  std::cout << fmt::format("det = {}, {}\n", det, det_tmp);
-//
-//  std::cout << inv_A - A.inverse() << "\n";
-//
-//  return true;
-//}
+bool test_majorana_gate() {
+  constexpr size_t nqb = 4;
+  GaussianState fermion_state1(nqb);
+  GaussianState fermion_state2(nqb);
 
+  for (int i = 0; i < 10; i++) {
+    int q1 = randi(0, nqb);
+    int q2 = randi(0, nqb);
+    while (q2 == q1) {
+      q2 = randi(0, nqb);
+    }
 
+    // both even
+    MajoranaGate gate1(nqb, 1.0);
+    double a = randf() * M_PI*2;
+    gate1.add_term(2*q1, 2*q2, a);
+    FreeFermionGate gate2(gate1);
+    ASSERT(gate1.to_matrix().isApprox(gate2.to_matrix()), fmt::format("Failed both even case, q = ({}, {})\n", q1, q2));
 
+    // i even
+    gate1 = MajoranaGate(nqb, 1.0);
+    gate1.add_term(2*q1, 2*q2+1, a);
+    gate2 = FreeFermionGate(gate1);
+    ASSERT(gate1.to_matrix().isApprox(gate2.to_matrix()), fmt::format("Failed i even case, q = ({}, {})\n", q1, q2));
+
+    // j even
+    gate1 = MajoranaGate(nqb, 1.0);
+    gate1.add_term(2*q1+1, 2*q2, a);
+    gate2 = FreeFermionGate(gate1);
+    ASSERT(gate1.to_matrix().isApprox(gate2.to_matrix()), fmt::format("Failed j even case, q = ({}, {})\n", q1, q2));
+
+    // both odd
+    gate1 = MajoranaGate(nqb, 1.0);
+    gate1.add_term(2*q1+1, 2*q2+1, a);
+    gate2 = FreeFermionGate(gate1);
+    ASSERT(gate1.to_matrix().isApprox(gate2.to_matrix()), fmt::format("Failed both odd case, q = ({}, {})\n", q1, q2));
+  }
+  
+  return true;
+}
 
 using TestResult = std::tuple<bool, int>;
 
@@ -751,8 +721,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_majorana_to_pauli);
   ADD_TEST(test_sample_paulis);
   ADD_TEST(test_majorana_covariance_matrix);
-  //ADD_TEST(test_det);
-  //ADD_TEST(test_det_case);
+  ADD_TEST(test_majorana_gate);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

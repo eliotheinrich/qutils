@@ -90,10 +90,10 @@ double GaussianState::entanglement(const QubitSupport& support, uint32_t index) 
       double lambda = std::clamp(vals[i], 1e-14, 1.0 - 1e-14);
       S += -lambda * std::log(lambda) - (1.0 - lambda) * std::log(1.0 - lambda);
     }
-    return S/2.0;
+    return S/2.0/std::log(2);
   } else {
     Eigen::MatrixXcd Cn = (CA1.pow(index) + CA2.pow(index)).log();
-    return Cn.trace().real()/(2.0*static_cast<double>(1.0 - index));
+    return Cn.trace().real()/(2.0*static_cast<double>(1.0 - index))/std::log(2);
   }
 }
 
@@ -169,11 +169,6 @@ MeasurementData GaussianState::weak_measure(const WeakMeasurement& m) {
 
   return wmzr(m.qubits[0], m.beta.value(), m.outcome);
 }
-
-//void GaussianState::weak_measurement_hamiltonian(const FreeFermionGate& gate, double beta) {
-//  Eigen::MatrixXcd U = (std::complex<double>(beta, 0.0) * gate.to_hamiltonian()).exp();
-//  weak_measurement(U);
-//}
 
 MeasurementData GaussianState::mzr(uint32_t i, std::optional<bool> outcome_opt) {
   double p = occupation(i);
@@ -431,158 +426,6 @@ std::vector<double> GaussianState::probabilities() const {
 
   return probs;
 }
-
-//std::pair<Eigen::MatrixXd, double> get_inv_and_det(const Eigen::MatrixXd& m) {
-//  Logger::log_info(fmt::format("Inverting {}x{} matrix.", m.rows(), m.cols()));
-//  Eigen::FullPivLU<Eigen::MatrixXd> lu(m);
-//  Eigen::MatrixXd inv = lu.inverse();
-//  double det = lu.determinant();
-//  return std::make_pair(inv, det);
-//}
-//
-//bool update_inv_and_det_lr(Eigen::MatrixXd& m, Eigen::MatrixXd& inv_m, double& det, int i) {
-//  double a = 1.0;
-//
-//  // Update matrix
-//  m(i, i) -= a;
-//
-//  if (std::abs(det*(1.0 - inv_m(i, i))) < 1e-16) {
-//    return true;
-//  }
-//
-//  // Update det
-//  det *= (1.0 - a*inv_m(i, i));
-//
-//  // Update inverse
-//  Eigen::VectorXd ci = inv_m.col(i);
-//  Eigen::VectorXd ri = inv_m.row(i);
-//  inv_m = inv_m + a * (ci * ri.transpose()) / (1.0 - a*inv_m(i, i));
-//
-//  return false;
-//}
-//
-//Eigen::MatrixXd submatrix(const Eigen::MatrixXd& A, size_t i) {
-//  size_t n = A.rows();
-//
-//  Eigen::MatrixXd tmp(n-1, n-1);
-//  tmp.topLeftCorner(i, i) = A.topLeftCorner(i, i);
-//  tmp.topRightCorner(i, n-i-1) = A.topRightCorner(i, n-i-1);
-//  tmp.bottomLeftCorner(n-i-1, i) = A.bottomLeftCorner(n-i-1, i);
-//  tmp.bottomRightCorner(n-i-1, n-i-1) = A.bottomRightCorner(n-i-1, n-i-1);
-//  return tmp;
-//}
-//
-//void update_inv_and_det_resize(Eigen::MatrixXd& m, Eigen::MatrixXd& inv_m, double& det, size_t i) {
-//  size_t n = m.rows();
-//
-//  // Edge case; 0x0 matrix has det = 0
-//  if (n == 1) {
-//    m.resize(0, 0);
-//    inv_m.resize(0, 0);
-//    det = 0.0;
-//    return;
-//  }
-//
-//  std::vector<size_t> indices;
-//  for (size_t k = 0; k < m.rows(); k++) {
-//    if (k == i) {
-//      continue;
-//    }
-//    indices.push_back(k);
-//  }
-//
-//  Eigen::MatrixXd tmp(n-1, n-1);
-//
-//  // Update det
-//  det *= inv_m(i, i);
-//
-//  // Update inverse
-//  if (std::abs(m(i, i)) < 1e-16) {
-//    // Using low-rank update
-//    double alpha = inv_m(i, i);
-//    Eigen::VectorXd r = inv_m(i, indices);
-//    Eigen::VectorXd s = inv_m(indices, i);
-//    Eigen::MatrixXd T = submatrix(inv_m, i);
-//    tmp.noalias() = T;
-//    tmp.noalias() -= (s * r.transpose()) / alpha;
-//  } else {
-//    // Using Woodbury formula
-//    Eigen::MatrixXd U = Eigen::MatrixXd::Zero(n, 2); 
-//    U(i, 0) = 1;
-//    U(indices, 1) = m(indices, i);
-//
-//    Eigen::MatrixXd V = Eigen::MatrixXd::Zero(2, n);
-//    V(1, i) = 1;
-//    V(0, indices) = m(0, indices);
-//
-//    Eigen::Matrix2d G = Eigen::MatrixXd::Identity(2, 2) - V * inv_m * U;
-//
-//    inv_m = inv_m + inv_m * U * G.inverse() * V * inv_m;
-//    tmp = submatrix(inv_m, i); 
-//  }
-//  inv_m.resize(n-1, n-1);
-//  inv_m = tmp;
-//
-//  // Update matrix
-//  tmp = submatrix(m, i);
-//  m.resize(n-1, n-1);
-//  m = tmp;
-//}
-
-//std::vector<PauliAmplitudes> GaussianState::sample_paulis(const std::vector<QubitSupport>& supports, size_t num_samples) {
-//  if (use_old_method) {
-//    return sample_paulis_old(supports, num_samples);
-//  }
-//
-//  if (supports.size() > 0) {
-//    throw not_implemented();
-//  }
-//
-//  // Save these so each sample doesn't need to compute A_inv from scratch
-//  Eigen::MatrixXd M = majorana_covariance_matrix();
-//  Eigen::MatrixXd A_initial = (Eigen::MatrixXd::Identity(2*num_qubits, 2*num_qubits) + M);
-//  double rho = std::pow(2.0, num_qubits);
-//
-//  auto [A_inv_initial, det_initial] = get_inv_and_det(A_initial);
-//
-//  std::vector<PauliAmplitudes> samples;
-//  for (size_t i = 0; i < num_samples; i++) {
-//    Eigen::MatrixXd A = A_initial;
-//    Eigen::MatrixXd A_inv = A_inv_initial;
-//    double det = det_initial;
-//    double p = 1.0;
-//    std::vector<uint32_t> included_indices;
-//
-//    for (size_t q = 0; q < 2*num_qubits; q++) {
-//      bool skip = update_inv_and_det_lr(A, A_inv, det, included_indices.size());
-//
-//      double r = randf();
-//
-//      double pq = 0.0;
-//      if (skip) {
-//        update_inv_and_det_resize(A, A_inv, det, included_indices.size());
-//      } else {
-//        pq = 1.0 - det/rho/p;
-//
-//        if (r < pq) {
-//          update_inv_and_det_resize(A, A_inv, det, included_indices.size());
-//          p *= pq;
-//        } else {
-//            included_indices.push_back(q);
-//          p *= 1.0 - pq;
-//        }
-//      }
-//    }
-//
-//    PauliString pauli = majorana_to_pauli({included_indices, 0}, num_qubits);
-//    std::vector<double> amplitudes = {std::pow(p*rho, 0.5)};
-//
-//    samples.push_back({pauli, amplitudes});
-//  }
-//
-//  return samples;
-//}
-
 
 std::vector<PauliAmplitudes> GaussianState::sample_paulis(const std::vector<QubitSupport>& supports, size_t num_samples) {
   if (supports.size() > 0) {
