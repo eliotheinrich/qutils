@@ -626,6 +626,41 @@ bool test_get_measurement() {
   return true;
 }
 
+bool test_commuting_hamiltonian() {
+  constexpr size_t nqb = 6;
+  CommutingHamiltonianGate gate(6, 1.0);
+
+  auto check_error = [&](PauliString pauli, Qubits qubits, bool expected_error) {
+    bool encountered_error = false;
+    try {
+      gate.add_term(1.0, pauli, qubits);
+    } catch (const std::exception& e) {
+      encountered_error = true;
+    }
+
+    ASSERT(expected_error == encountered_error, fmt::format("Failed for P = {}, qubits = {}, expected = {}, encountered = {}\n", pauli, qubits, expected_error, encountered_error));
+    return true;
+  };
+  
+  if (!check_error(PauliString("ZZ"), {0, 1}, false)) return false;
+  if (!check_error(PauliString("ZZ"), {2, 3}, false)) return false;
+  if (!check_error(PauliString("ZZ"), {4, 5}, false)) return false;
+  if (!check_error(PauliString("XX"), {0, 1}, false)) return false;
+  if (!check_error(PauliString("XX"), {2, 3}, false)) return false;
+  if (!check_error(PauliString("XX"), {4, 5}, false)) return false;
+  if (!check_error(PauliString("XXXX"), {0, 1, 2, 3}, false)) return false;
+  if (!check_error(PauliString("XXXX"), {0, 1, 4, 5}, false)) return false;
+
+  if (!check_error(PauliString("XX"), {1, 2}, true)) return false;
+  if (!check_error(PauliString("XX"), {3, 5}, true)) return false;
+
+  for (uint32_t q = 0; q < nqb; q++) {
+    if (!check_error(PauliString("X"), {q}, true)) return false;
+  }
+
+  return true;
+}
+
 bool test_simplify_commuting_hamiltonian() {
   constexpr size_t nqb = 6;
 
@@ -684,6 +719,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_classical_circuit);
   ADD_TEST(test_circuit_erase);
   ADD_TEST(test_get_measurement);
+  ADD_TEST(test_commuting_hamiltonian);
   ADD_TEST(test_simplify_commuting_hamiltonian);
 
   constexpr char green[] = "\033[1;32m";

@@ -416,13 +416,18 @@ class MajoranaGate {
       terms.push_back({i1, i2, amplitude});
     }
 
+    void set_t(double t) {
+      this->t = t;
+    }
+
+    MajoranaGate combine(const MajoranaGate& other) const;
+
     void apply_qubit_map(const Qubits& qubits);
 
     Qubits get_support() const;
     std::shared_ptr<Gate> to_gate() const;
     Eigen::MatrixXcd to_matrix() const;
 
-    std::string label() const;
     std::string to_string() const;
 };
 
@@ -467,6 +472,12 @@ class FreeFermionGate {
       terms.push_back({i1, i2, amplitude, adj});
     }
 
+    void set_t(double t) {
+      this->t = t;
+    }
+
+    FreeFermionGate combine(const FreeFermionGate& other) const;
+
     std::string label() const;
 
     std::string to_string() const;
@@ -499,6 +510,7 @@ struct PauliTerm {
   PauliString pauli;
   Qubits support;
 };
+
 class CommutingHamiltonianGate {
   public:
     uint32_t num_qubits;
@@ -517,13 +529,7 @@ class CommutingHamiltonianGate {
       return t ? 0 : 1;
     }
 
-    void add_term(double a, const PauliString& p, const Qubits& qubits) {
-      if (p.num_qubits != qubits.size()) {
-        throw std::runtime_error(fmt::format("Invalid number of qubits passed to CommutingHamiltonianGate.add_term()."));
-      }
-
-      terms.push_back({a, p, qubits});
-    }
+    void add_term(double a, const PauliString& p, const Qubits& qubits);
 
     std::string label() const;
 

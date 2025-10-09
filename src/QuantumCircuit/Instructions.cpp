@@ -455,6 +455,20 @@ PauliString majorana_operator(size_t k, size_t num_qubits) {
   return P;
 }
 
+MajoranaGate MajoranaGate::combine(const MajoranaGate& other) const {
+  MajoranaGate gate(*this);
+  for (auto& term : gate.terms) {
+    term.a *= gate.t.value();
+  }
+
+  for (const auto& term : other.terms) {
+    gate.add_term(term.i, term.j, other.t.value()*term.a);
+  }
+
+  gate.set_t(1.0);
+  return gate;
+}
+
 void MajoranaGate::apply_qubit_map(const Qubits& qubits) {
   for (auto& term : terms) {
     term.i = 2*qubits[term.i / 2] + term.i % 2;
@@ -551,6 +565,20 @@ FreeFermionGate::FreeFermionGate(const MajoranaGate& gate) : num_qubits(gate.num
       add_term(n, m,-gates::i*term.a, false);
     }
   }
+}
+
+FreeFermionGate FreeFermionGate::combine(const FreeFermionGate& other) const {
+  FreeFermionGate gate(*this);
+  for (auto& term : gate.terms) {
+    term.a *= gate.t.value();
+  }
+
+  for (const auto& term : other.terms) {
+    gate.add_term(term.i, term.j, other.t.value()*term.a, term.adj);
+  }
+
+  gate.set_t(1.0);
+  return gate;
 }
 
 std::string FreeFermionGate::label() const {
@@ -694,6 +722,57 @@ std::string FreeFermionGate::to_string() const {
   }
 
   return fmt::format("{} + h.c.", fmt::join(s, " + "));
+}
+
+void CommutingHamiltonianGate::add_term(double a, const PauliString& p, const Qubits& qubits) {
+  if (p.num_qubits != qubits.size()) {
+    throw std::runtime_error(fmt::format("Invalid number of qubits passed to CommutingHamiltonianGate.add_term()."));
+  }
+
+  std::unordered_map<uint32_t, uint32_t> pos1;
+  for (size_t i = 0; i < qubits.size(); i++) {
+    pos1[qubits[i]] = i;
+  }
+
+  // Check for non-commuting terms
+  std::unordered_set<uint32_t> s(qubits.begin(), qubits.end());
+  for (const auto& term : terms) {
+    // Find overlapping qubits
+    std::vector<uint32_t> overlap;
+    for (uint32_t x : term.support) {
+      if (s.contains(x)) {
+        overlap.push_back(x);
+      }
+    }
+
+    std::unordered_map<uint32_t, uint32_t> pos2;
+    for (size_t i = 0; i < term.support.size(); i++) {
+      pos2[term.support[i]] = i;
+    }
+
+    size_t commuting_indices = 0;
+    for (uint32_t q : overlap) {
+      uint32_t r1 = pos1[q];
+      uint32_t r2 = pos2[q];
+
+      bool x1 = p.get_x(r1);
+      bool x2 = term.pauli.get_x(r2);
+      bool z1 = p.get_z(r1);
+      bool z2 = term.pauli.get_z(r2);
+
+      if ((x1 == x2 && z1 == z2) || (!x1 && !z1) || (!x2 && !z2)) {
+        commuting_indices++;
+      }
+    }
+
+    size_t anticommuting_indices = overlap.size() - commuting_indices;
+
+    if (anticommuting_indices % 2 != 0) {
+      throw std::runtime_error(fmt::format("Operators do not commute: {} and {}\n", p, term.pauli));
+    }
+  }
+
+  terms.push_back({a, p, qubits});
 }
 
 std::string CommutingHamiltonianGate::label() const {
