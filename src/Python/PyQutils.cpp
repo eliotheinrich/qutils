@@ -599,6 +599,7 @@ NB_MODULE(qutils_bindings, m) {
       new (gate) FreeFermionGate(num_qubits, t);
     }, "num_qubits"_a, "t"_a=nanobind::none())
     .def(nanobind::init<const FreeFermionGate&>())
+    .def(nanobind::init<const MajoranaGate&>())
     .def("set_t", &FreeFermionGate::set_t)
     .def("add_term", &FreeFermionGate::add_term, "i"_a, "j"_a, "a"_a, "adj"_a=true)
     .def("to_gate", [](const FreeFermionGate& self) { return self.to_gate()->define(); })
@@ -653,6 +654,12 @@ NB_MODULE(qutils_bindings, m) {
         self.evolve(qc, qubits);
       }
     }, "circuit"_a, "qubits"_a, "params"_a=nanobind::none())
+    .def("evolve", [](GaussianState& state, const FreeFermionGate& gate) {
+      state.evolve(gate);
+    })
+    .def("evolve", [](GaussianState& state, const MajoranaGate& gate) {
+      state.evolve(FreeFermionGate(gate));
+    })
     .def("num_particles", &GaussianState::num_particles)
     .def("covariance_matrix", &GaussianState::covariance_matrix)
     .def("majorana_covariance_matrix", &GaussianState::majorana_covariance_matrix)
