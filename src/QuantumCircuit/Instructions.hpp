@@ -396,6 +396,9 @@ struct QuadraticMajoranaTerm {
 // A_ij is antisymmetric, so if the term (i, j, a) is inserted, then the term (j, i, -a)
 // is automatically included
 class MajoranaGate {
+  private:
+    std::map<std::tuple<int, int>, size_t> term_map;
+
   public:
     uint32_t num_qubits;
     bool adj;
@@ -408,13 +411,7 @@ class MajoranaGate {
     MajoranaGate(uint32_t num_qubits, std::optional<double> t=std::nullopt, bool adj=false)
       : num_qubits(num_qubits), t(t), adj(adj) { }
 
-    void add_term(uint32_t i, uint32_t j, double a) {
-      uint32_t i1 = std::min(i, j);
-      uint32_t i2 = std::max(i, j);
-      double sign = (i1 == i) ? 1.0 : -1.0;
-      double amplitude = sign * a;
-      terms.push_back({i1, i2, amplitude});
-    }
+    void add_term(uint32_t i, uint32_t j, double a);
 
     void set_t(double t) {
       this->t = t;
@@ -447,6 +444,7 @@ class FreeFermionGate {
   private:
     uint32_t num_qubits;
     std::vector<QuadraticFermionTerm> terms;
+    std::map<std::tuple<int, int, bool>, size_t> term_map;
 
   public:
     std::optional<double> t;
@@ -464,13 +462,7 @@ class FreeFermionGate {
       return t ? 0 : 1;
     }
 
-    void add_term(uint32_t i, uint32_t j, std::complex<double> a, bool adj=true) {
-      uint32_t i1 = std::min(i, j);
-      uint32_t i2 = std::max(i, j);
-      double sign = (i1 != i) ? -1.0 : 1.0;
-      std::complex<double> amplitude = sign * a;
-      terms.push_back({i1, i2, amplitude, adj});
-    }
+    void add_term(uint32_t i, uint32_t j, std::complex<double> a, bool adj=true);
 
     void set_t(double t) {
       this->t = t;

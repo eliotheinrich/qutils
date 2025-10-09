@@ -455,6 +455,22 @@ PauliString majorana_operator(size_t k, size_t num_qubits) {
   return P;
 }
 
+void MajoranaGate::add_term(uint32_t i, uint32_t j, double a) {
+  uint32_t i1 = std::min(i, j);
+  uint32_t i2 = std::max(i, j);
+  double sign = (i1 != i && !adj) ? -1.0 : 1.0;
+  double amplitude = sign * a;
+
+  auto idx = std::make_tuple(i1, i2);
+  if (!term_map.contains(idx)) {
+    term_map[idx] = terms.size();
+    terms.push_back({i1, i2, 0.0});
+  }
+
+  int k = term_map[idx];
+  terms[k].a += amplitude;
+}
+
 MajoranaGate MajoranaGate::combine(const MajoranaGate& other) const {
   if (!t || !other.t) {
     throw std::runtime_error("Cannot combine MajoranaGates with unbound t.");
@@ -571,6 +587,22 @@ FreeFermionGate::FreeFermionGate(const MajoranaGate& gate) : num_qubits(gate.num
   }
 }
 
+void FreeFermionGate::add_term(uint32_t i, uint32_t j, std::complex<double> a, bool adj) {
+  uint32_t i1 = std::min(i, j);
+  uint32_t i2 = std::max(i, j);
+  double sign = (i1 != i) ? -1.0 : 1.0;
+  std::complex<double> amplitude = sign * a;
+  
+  auto idx = std::make_tuple(i1, i2, adj);
+  if (!term_map.contains(idx)) {
+    term_map[idx] = terms.size();
+    terms.push_back({i1, i2, 0.0, adj});
+  }
+
+  int k = term_map[idx];
+  terms[k].a += amplitude;
+}
+
 FreeFermionGate FreeFermionGate::combine(const FreeFermionGate& other) const {
   if (!t || !other.t) {
     throw std::runtime_error("Cannot combine MajoranaGates with unbound t.");
@@ -643,7 +675,7 @@ Eigen::MatrixXcd term_to_matrix(const QuadraticFermionTerm& term) {
   p[0] = sm * p[0];
 
   std::complex<double> a = term.a;
-  if (term.j < term.i) {
+  if (term.j < term.i && !term.adj) {
     a = -a;
   }
 

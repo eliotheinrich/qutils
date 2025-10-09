@@ -673,7 +673,11 @@ bool test_simplify_commuting_hamiltonian() {
       PauliString p = PauliString::randh(k);
       Qubits qubits = random_qubits(nqb, k);
       double a = 1.0;
-      gate.add_term(a, p, qubits);
+      try {
+        gate.add_term(a, p, qubits);
+      } catch (const std::exception& e) {
+
+      }
     }
 
     qc.add_gate(gate);

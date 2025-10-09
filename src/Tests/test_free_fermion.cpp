@@ -187,6 +187,8 @@ bool test_term_to_matrix() {
     ASSERT(H1.isApprox(H2) && H1.isApprox(H3));
   }
 
+  std::cout << "Survived single-qubit terms\n";
+
   // Two-qubit
   for (size_t i = 0; i < 100; i++) {
     double theta = randf(0, 2 * M_PI);
@@ -219,6 +221,8 @@ bool test_term_to_matrix() {
     H3 = majorana_term2(term, 2);
     ASSERT(H1.isApprox(H2) && H1.isApprox(H3));
   }
+
+  std::cout << "Survived two-qubit terms\n";
 
   // Three-qubit
   for (size_t i = 0; i < 100; i++) {
