@@ -456,6 +456,10 @@ PauliString majorana_operator(size_t k, size_t num_qubits) {
 }
 
 MajoranaGate MajoranaGate::combine(const MajoranaGate& other) const {
+  if (!t || !other.t) {
+    throw std::runtime_error("Cannot combine MajoranaGates with unbound t.");
+  }
+
   MajoranaGate gate(*this);
   for (auto& term : gate.terms) {
     term.a *= gate.t.value();
@@ -568,6 +572,10 @@ FreeFermionGate::FreeFermionGate(const MajoranaGate& gate) : num_qubits(gate.num
 }
 
 FreeFermionGate FreeFermionGate::combine(const FreeFermionGate& other) const {
+  if (!t || !other.t) {
+    throw std::runtime_error("Cannot combine MajoranaGates with unbound t.");
+  }
+
   FreeFermionGate gate(*this);
   for (auto& term : gate.terms) {
     term.a *= gate.t.value();
