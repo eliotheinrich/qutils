@@ -431,7 +431,7 @@ NB_MODULE(qutils_bindings, m) {
     .def("evolve", [](DensityMatrix& self, const Eigen::MatrixXcd& gate, const std::vector<uint32_t>& qubits) { self.evolve(gate, qubits); });
 
   nanobind::class_<MatrixProductState, MagicQuantumState>(m, "MatrixProductState")
-    .def(nanobind::init<uint32_t, uint32_t, double>(), "num_qubits"_a, "max_bond_dimension"_a, "sv_threshold"_a=1e-4)
+    .def(nanobind::init<uint32_t, uint32_t, double>(), "num_qubits"_a, "max_bond_dimension"_a, "sv_threshold"_a=1e-9)
     .def(nanobind::init<const MatrixProductState&>())
     .def("__str__", &MatrixProductState::to_string)
     .def("__setstate__", [](MatrixProductState& self, const nanobind::bytes& bytes) { 
