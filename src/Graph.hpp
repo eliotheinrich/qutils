@@ -790,4 +790,3 @@ using DirectedGraph = Graph<V, T, DirectedTag>;
 
 template <typename V, typename T=void>
 using UndirectedGraph = Graph<V, T, UndirectedTag>;
-

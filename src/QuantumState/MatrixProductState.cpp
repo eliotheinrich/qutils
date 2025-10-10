@@ -202,17 +202,16 @@ class MatrixProductStateImpl {
   friend class MatrixProductState;
   friend class MatrixProductMixedStateImpl;
 
-  private:
   public:
-		std::vector<ITensor> tensors;
+    std::vector<ITensor> tensors;
     ITensor left_environment_tensor;
     ITensor right_environment_tensor;
 
     Index left_boundary_index;
     Index right_boundary_index;
 
-		std::vector<Index> external_indices;
-		std::vector<Index> internal_indices;
+    std::vector<Index> external_indices;
+    std::vector<Index> internal_indices;
 
     uint32_t left_ortho_lim;
     uint32_t right_ortho_lim;
@@ -900,7 +899,6 @@ class MatrixProductStateImpl {
       auto [L, R] = get_boundary_tensors(q1, q2);
 
       std::vector<ITensor> operators;
-
       std::set<uint32_t> qubits_set(qubits.begin(), qubits.end());
       for (size_t q = q1; q < q2; q++) {
         Index idx = external_idx(q);
@@ -911,8 +909,6 @@ class MatrixProductStateImpl {
         }
       }
 
-      //std::complex<double> d = partial_expectation(operators, q1, q2, L, R);
-      //return d.real();
       return partial_expectation(operators, q1, q2, L, R).real();
     }
 
@@ -941,11 +937,9 @@ class MatrixProductStateImpl {
 
     std::vector<BitAmplitudes> sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) {
       orthogonalize(0);
-
       std::vector<BitAmplitudes> samples;
       
       for (size_t i = 0; i < num_samples; i++) {
-
         double p = 1.0;
         BitString bits(num_qubits);
         ITensor L = left_environment_tensor;
@@ -985,6 +979,30 @@ class MatrixProductStateImpl {
       }
 
       return samples;
+    }
+
+    double participation_entropy_order2() {
+      ITensor L = left_environment_tensor;
+      try {
+        L *= prime(left_environment_tensor, 2);
+      } catch (const ITError& error) {
+        L *= prime(toDense(left_environment_tensor), 2);
+      }
+
+      for (size_t i = 0; i < num_qubits; i++) {
+        ITensor A = tensors[i];
+        ITensor T = prime(prime(A, "Internal"), "Internal");
+        Index ext = external_indices[i];
+        L *= A;
+        L *= prime(T, "External") * delta(ext, prime(ext), prime(ext, 2));
+        L *= prime(conj(T), "Internal") * delta(ext, prime(ext), prime(ext, 2));
+        L *= conj(prime(A));
+      }
+
+      L *= right_environment_tensor;
+      L *= prime(right_environment_tensor, 2);
+
+      return -std::log2(norm(L));
     }
 
     std::vector<PauliAmplitudes> sample_paulis(const std::vector<QubitSupport>& supports, size_t num_samples) {
@@ -2061,6 +2079,10 @@ std::vector<double> MatrixProductState::process_bipartite_pauli_samples(const st
 
 std::vector<BitAmplitudes> MatrixProductState::sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) const {
   return impl->sample_bitstrings(supports, num_samples);
+}
+
+double MatrixProductState::participation_entropy_order2() {
+  return impl->participation_entropy_order2();
 }
 
 std::vector<std::vector<double>> MatrixProductState::process_bipartite_bit_samples(const std::vector<size_t>& renyi_indices, const std::vector<BitAmplitudes>& samples) const {

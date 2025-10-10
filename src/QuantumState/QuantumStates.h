@@ -448,6 +448,7 @@ class MatrixProductState : public MagicQuantumState {
 
     std::vector<std::vector<double>> process_bipartite_bit_samples(const std::vector<size_t>& renyi_indices, const std::vector<BitAmplitudes>& samples) const;
     virtual std::vector<BitAmplitudes> sample_bitstrings(const std::vector<QubitSupport>& supports, size_t num_samples) const override;
+    double participation_entropy_order2();
 
     static double calculate_magic_mutual_information_from_samples2(const std::vector<double>& tAB, const std::vector<double>& tA, const std::vector<double>& tB);
     std::vector<double> process_bipartite_pauli_samples(const std::vector<PauliAmplitudes>& samples) const;
