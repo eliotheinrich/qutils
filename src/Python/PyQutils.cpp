@@ -485,6 +485,7 @@ NB_MODULE(qutils_bindings, m) {
 
   nanobind::class_<QuantumCHPState, EntanglementEntropyState>(m, "QuantumCHPState")
     .def(nanobind::init<uint32_t>())
+    .def(nanobind::init<uint32_t, bool>())
     .def_ro("num_qubits", &QuantumCHPState::num_qubits)
     .def("set_print_mode", &QuantumCHPState::set_print_mode)
     .def("__str__", &QuantumCHPState::to_string)
