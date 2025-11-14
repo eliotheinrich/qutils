@@ -62,6 +62,7 @@ foreach (tgt IN ITEMS quantum_state quantum_circuit free_fermion clifford_state)
 endforeach()
 
 if (QUTILS_BUILD_TESTS)
+    enable_testing()
     add_subdirectory(${PROJECT_SOURCE_DIR}/src/Tests)
 endif()
 

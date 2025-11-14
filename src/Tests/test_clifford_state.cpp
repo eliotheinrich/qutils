@@ -170,6 +170,8 @@ bool test_chp_state() {
   return true;
 }
 
+#ifdef __AVX__
+
 bool test_chp_simd() {
   for (size_t i = 0; i < 10; i++) {
     size_t nqb = randi(1, 129);
@@ -204,35 +206,14 @@ bool test_chp_simd() {
   return true;
 }
 
-bool test_measurement_record() {
+#else
 
+bool test_chp_simd() {
   return true;
 }
 
-bool test_z2_clifford() {
-  
-  return true;
-}
+#endif
 
-bool test_serialize() {
-  
-  return true;
-}
-
-bool test_forced_measurement() {
-
-  return true;
-}
-
-bool test_bitstring_expectation() {
-
-  return true;
-}
-
-bool test_chp_probs() {
-
-  return true;
-}
 
 using TestResult = std::tuple<bool, int>;
 
@@ -259,12 +240,6 @@ int main(int argc, char *argv[]) {
 
   ADD_TEST(test_chp_state);
   ADD_TEST(test_chp_simd);
-  ADD_TEST(test_z2_clifford);
-  ADD_TEST(test_serialize);
-  ADD_TEST(test_forced_measurement);
-  ADD_TEST(test_bitstring_expectation);
-  ADD_TEST(test_measurement_record);
-  ADD_TEST(test_chp_probs);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";
