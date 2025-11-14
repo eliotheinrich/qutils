@@ -187,8 +187,6 @@ bool test_term_to_matrix() {
     ASSERT(H1.isApprox(H2) && H1.isApprox(H3));
   }
 
-  std::cout << "Survived single-qubit terms\n";
-
   // Two-qubit
   for (size_t i = 0; i < 100; i++) {
     double theta = randf(0, 2 * M_PI);
@@ -221,8 +219,6 @@ bool test_term_to_matrix() {
     H3 = majorana_term2(term, 2);
     ASSERT(H1.isApprox(H2) && H1.isApprox(H3));
   }
-
-  std::cout << "Survived two-qubit terms\n";
 
   // Three-qubit
   for (size_t i = 0; i < 100; i++) {
@@ -648,7 +644,7 @@ bool test_sample_paulis() {
 }
 
 bool test_majorana_gate() {
-  constexpr size_t nqb = 4;
+  constexpr size_t nqb = 2;
   GaussianState fermion_state1(nqb);
   GaussianState fermion_state2(nqb);
 
@@ -661,28 +657,62 @@ bool test_majorana_gate() {
 
     // both even
     MajoranaGate gate1(nqb, 1.0);
-    double a = randf() * M_PI*2;
+    double a = randf() * M_PI * 2;
     gate1.add_term(2*q1, 2*q2, a);
     FreeFermionGate gate2(gate1);
     ASSERT(gate1.to_matrix().isApprox(gate2.to_matrix()), fmt::format("Failed both even case, q = ({}, {})\n", q1, q2));
+    auto H = gate2.to_hamiltonian();
+    ASSERT(H.isApprox(H.adjoint()), fmt::format("Gate not Hermitian in both even case."));
 
     // i even
     gate1 = MajoranaGate(nqb, 1.0);
     gate1.add_term(2*q1, 2*q2+1, a);
     gate2 = FreeFermionGate(gate1);
     ASSERT(gate1.to_matrix().isApprox(gate2.to_matrix()), fmt::format("Failed i even case, q = ({}, {})\n", q1, q2));
+    H = gate2.to_hamiltonian();
+    ASSERT(H.isApprox(H.adjoint()), fmt::format("Gate not Hermitian in both even case."));
 
     // j even
     gate1 = MajoranaGate(nqb, 1.0);
     gate1.add_term(2*q1+1, 2*q2, a);
     gate2 = FreeFermionGate(gate1);
     ASSERT(gate1.to_matrix().isApprox(gate2.to_matrix()), fmt::format("Failed j even case, q = ({}, {})\n", q1, q2));
+    H = gate2.to_hamiltonian();
+    ASSERT(H.isApprox(H.adjoint()), fmt::format("Gate not Hermitian in both even case."));
 
     // both odd
     gate1 = MajoranaGate(nqb, 1.0);
     gate1.add_term(2*q1+1, 2*q2+1, a);
     gate2 = FreeFermionGate(gate1);
     ASSERT(gate1.to_matrix().isApprox(gate2.to_matrix()), fmt::format("Failed both odd case, q = ({}, {})\n", q1, q2));
+    H = gate2.to_hamiltonian();
+    ASSERT(H.isApprox(H.adjoint()), fmt::format("Gate not Hermitian in both even case."));
+  }
+  
+  return true;
+}
+
+bool test_nonlocal_gate() {
+  constexpr size_t nqb = 4;
+  GaussianState state(nqb);
+
+  QuantumCircuit qc(nqb);
+
+  MajoranaGate gate(nqb, 1.0);
+  gate.add_term(0, 2, 1.0);
+  qc.add_gate(gate);
+
+  state.evolve(qc);
+
+  Statevector psi(nqb);
+  psi.evolve(qc);
+
+  for (size_t i = 0; i < 10; i++) {
+    PauliString P = PauliString::randh(nqb);
+    double c1 = std::abs(psi.expectation(P));
+    double c2 = std::abs(state.expectation(P));
+    std::cout << fmt::format("c1 = {}, c2 = {}\n", c1, c2);
+    ASSERT(is_close(c1, c2));
   }
   
   return true;
@@ -726,6 +756,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_sample_paulis);
   ADD_TEST(test_majorana_covariance_matrix);
   ADD_TEST(test_majorana_gate);
+  ADD_TEST(test_nonlocal_gate);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

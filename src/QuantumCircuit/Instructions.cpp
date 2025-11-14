@@ -482,7 +482,7 @@ MajoranaGate MajoranaGate::combine(const MajoranaGate& other) const {
   }
 
   for (const auto& term : other.terms) {
-    gate.add_term(term.i, term.j, other.t.value()*term.a);
+    gate.add_term(term.i, term.j, other.t.value() * term.a);
   }
 
   gate.set_t(1.0);
@@ -544,7 +544,8 @@ std::shared_ptr<Gate> MajoranaGate::to_gate() const {
   size_t N = support.size();
   Eigen::MatrixXcd H = Eigen::MatrixXcd::Zero(1u << N, 1u << N);
   for (const auto& term : gate.terms) {
-    H += embed_unitary(term_to_matrix(term), to_qubits(get_term_support(term)), N);
+    auto Ht = embed_unitary(term_to_matrix(term), to_qubits(get_term_support(term)), N);
+    H += Ht;
   }
 
   Eigen::MatrixXcd U = (-t.value() * H).exp();
@@ -571,16 +572,17 @@ FreeFermionGate::FreeFermionGate(const MajoranaGate& gate) : num_qubits(gate.num
     
     size_t n = i / 2;
     size_t m = j / 2;
-    if (i % 2 == 0 && j % 2 == 0) {
+
+    if (i % 2 == 0 && j % 2 == 0) {        // both even
       add_term(n, m, gates::i*term.a, true);
       add_term(n, m, gates::i*term.a, false);
-    } else if (i % 2 == 0) {
-      add_term(n, m, term.a, true);
-      add_term(n, m,-term.a, false);
-    } else if (j % 2 == 0) {
-      add_term(n, m,-term.a, true);
-      add_term(n, m,-term.a, false);
-    } else {
+    } else if (i % 2 == 0 && j % 2 == 1) { // i even, j odd
+      add_term(n, m,  term.a, true);
+      add_term(n, m, -term.a, false);
+    } else if (i % 2 == 1 && j % 2 == 0) { // i odd, j even
+      add_term(n, m, -term.a, true);
+      add_term(n, m, -term.a, false);
+    } else {                               // both odd
       add_term(n, m, gates::i*term.a, true);
       add_term(n, m,-gates::i*term.a, false);
     }
@@ -723,7 +725,8 @@ std::shared_ptr<Gate> FreeFermionGate::to_gate() const {
   size_t N = support.size();
   Eigen::MatrixXcd H = Eigen::MatrixXcd::Zero(1u << N, 1u << N);
   for (const auto& term : gate.terms) {
-    H += embed_unitary(term_to_matrix(term), to_qubits(get_term_support(term)), N);
+    auto Ht = embed_unitary(term_to_matrix(term), to_qubits(get_term_support(term)), N);
+    H += Ht;
   }
 
   Eigen::MatrixXcd U = (gates::i * t.value() * H).exp();
@@ -737,10 +740,10 @@ Eigen::MatrixXcd FreeFermionGate::to_hamiltonian() const {
   for (const auto& term : terms) {
     if (term.adj) {
       A(term.i, term.j) += term.a;
-      A(term.j, term.i) += term.a;
+      A(term.j, term.i) += std::conj(term.a);
     } else {
       B(term.i, term.j) += term.a;
-      B(term.j, term.i) += -term.a;
+      B(term.j, term.i) -= term.a;
     }
   }
 
