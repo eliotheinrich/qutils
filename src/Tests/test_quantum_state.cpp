@@ -1861,6 +1861,8 @@ int main(int argc, char *argv[]) {
     return stream.str();
   };
 
+  bool all_passed = true;
+
   if (tests.size() == 0) {
     std::cout << "No tests to run.\n";
   } else {
@@ -1869,8 +1871,11 @@ int main(int argc, char *argv[]) {
       auto [passed, duration] = result;
       std::cout << fmt::format("{:>40}: {} ({:.2f} seconds)\n", name, test_passed_str(passed), duration/1e6);
       total_duration += duration;
+      all_passed &= passed;
     }
 
     std::cout << fmt::format("Total duration: {:.2f} seconds\n", total_duration/1e6);
   }
+
+  return !all_passed;
 }

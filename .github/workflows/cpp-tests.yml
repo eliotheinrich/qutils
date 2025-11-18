@@ -2,16 +2,13 @@ name: qutils CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "test_actions" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "test_actions" ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    env:
-      ITENSOR_DIR: /usr/local/itensor
 
     steps:
       - name: Check out
@@ -25,7 +22,8 @@ jobs:
             libeigen3-dev \
             libfmt-dev \
             libopenblas-dev \
-            liblapack-dev
+            liblapack-dev \
+            liblapacke-dev
 
       - name: Install Intel MKL (optional)
         run: |
@@ -35,10 +33,84 @@ jobs:
       - name: Install ITensor
         run: |
           git clone https://github.com/ITensor/ITensor.git
-          mkdir -p ITensor/build && cd ITensor/build
-          cmake .. -DCMAKE_INSTALL_PREFIX=$ITENSOR_DIR
+
+          cd ITensor
+
+          cat > options.mk << 'EOF'
+          CCCOM=g++ -std=c++2b -fPIC
+
+          #PLATFORM=lapack
+          #BLAS_LAPACK_LIBFLAGS=-lpthread -L/usr/lib -lblas -llapack 
+
+          PLATFORM=openblas
+          BLAS_LAPACK_LIBFLAGS=-lpthread -L/usr/local/opt/openblas/lib -lopenblas
+          BLAS_LAPACK_INCLUDEFLAGS=-I/usr/local/opt/openblas/include -fpermissive -DHAVE_LAPACK_CONFIG_H -DLAPACK_COMPLEX_STRUCTURE
+
+          OPTIMIZATIONS=-O2 -DNDEBUG -Wall -Wno-unknown-pragmas
+
+          DEBUGFLAGS=-DDEBUG -g -Wall -Wno-unknown-pragmas -pedantic
+          ITENSOR_MAKE_DYLIB=0
+
+          ###
+          ### Other Makefile variables defined for convenience.
+          ### Not necessary to modify these for most cases.
+          ###
+
+          PREFIX=$(THIS_DIR)
+
+          ITENSOR_LIBDIR=$(PREFIX)/lib
+          ITENSOR_INCLUDEDIR=$(PREFIX)
+
+          ITENSOR_LIBNAMES=itensor
+          ITENSOR_LIBFLAGS=$(patsubst %,-l%, $(ITENSOR_LIBNAMES))
+          ITENSOR_LIBFLAGS+= $(BLAS_LAPACK_LIBFLAGS)
+          ITENSOR_LIBGFLAGS=$(patsubst %,-l%-g, $(ITENSOR_LIBNAMES))
+          ITENSOR_LIBGFLAGS+= $(BLAS_LAPACK_LIBFLAGS)
+          ITENSOR_LIBS=$(patsubst %,$(ITENSOR_LIBDIR)/lib%.a, $(ITENSOR_LIBNAMES))
+          ITENSOR_GLIBS=$(patsubst %,$(ITENSOR_LIBDIR)/lib%-g.a, $(ITENSOR_LIBNAMES))
+
+          ITENSOR_INCLUDEFLAGS=-I'$(ITENSOR_INCLUDEDIR)' $(BLAS_LAPACK_INCLUDEFLAGS)
+
+          ifdef HDF5_PREFIX
+          ITENSOR_USE_HDF5 = 1
+          ITENSOR_INCLUDEFLAGS += -I$(HDF5_PREFIX)/include -DITENSOR_USE_HDF5
+          ITENSOR_LIBFLAGS += -L$(HDF5_PREFIX)/lib -lhdf5 -lhdf5_hl
+          ITENSOR_LIBGFLAGS += -L$(HDF5_PREFIX)/lib -lhdf5 -lhdf5_hl
+          endif
+
+          ifndef CCCOM
+          $(error Makefile variable CCCOM not defined in options.mk; please define it.)
+          endif
+
+          ifdef ITENSOR_USE_OMP
+          ITENSOR_INCLUDEFLAGS += -DITENSOR_USE_OMP -fopenmp
+          ITENSOR_LIBFLAGS += -fopenmp
+          ITENSOR_LIBGFLAGS += -fopenmp
+          endif
+
+          CCFLAGS=-I. $(ITENSOR_INCLUDEFLAGS) $(OPTIMIZATIONS) -Wno-unused-variable
+          CCGFLAGS=-I. $(ITENSOR_INCLUDEFLAGS) $(DEBUGFLAGS)
+          LIBFLAGS=-L'$(ITENSOR_LIBDIR)' $(ITENSOR_LIBFLAGS)
+          LIBGFLAGS=-L'$(ITENSOR_LIBDIR)' $(ITENSOR_LIBGFLAGS)
+
+          ## Determine shared library extension
+          UNAME_S := $(shell uname -s)
+          ifeq ($(UNAME_S),Darwin)
+            DYLIB_EXT ?= dylib
+            DYLIB_FLAGS ?= -dynamiclib
+          else
+            DYLIB_EXT ?= so
+            DYLIB_FLAGS ?= -shared
+          endif
+          EOF
+
+          cat options.mk
+
+          # Build ITensor
           make -j$(nproc)
-          sudo make install
+
+          echo "ITENSOR_DIR=$GITHUB_WORKSPACE/ITensor" >> $GITHUB_ENV
+          echo "ITENSOR_DIR = $GITHUB_WORKSPACE/ITensor"
 
       - name: Configure CMake
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DQUTILS_BUILD_TESTS=ON
