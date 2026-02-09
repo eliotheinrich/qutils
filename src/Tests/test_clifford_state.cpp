@@ -228,7 +228,7 @@ bool test_async_chp() {
 
     QuantumCircuit qc(nqb);
     for (uint32_t i = 0; i < 100; i++) {
-      uint64_t r = randi() % nqb;
+      uint32_t r = randi() % nqb;
       qc.random_clifford({r, (r+1)%nqb});
     }
 

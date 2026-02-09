@@ -4,6 +4,7 @@
 
 #include <fmt/format.h>
 
+#include <functional>
 #include <iostream>
 #include <vector>
 #include <iterator>
@@ -734,6 +735,46 @@ class Graph {
 
       return double(max_cluster_size)/num_vertices;
     }
+
+    // Returns true if the graph contains any cycle
+    bool has_cycle() const {
+      std::vector<bool> visited(num_vertices, false);
+      std::vector<bool> rec_stack(num_vertices, false);
+
+      // Helper lambda for DFS
+      std::function<bool(uint32_t, uint32_t)> dfs = [&](uint32_t v, uint32_t parent) -> bool {
+        visited[v] = true;
+        rec_stack[v] = true;
+
+        for (auto u : edges_of(v)) {
+          if (!visited[u]) {
+            if (dfs(u, v)) {
+              return true;
+            }
+          } else if constexpr (std::is_same_v<DirTag, UndirectedTag>) {
+            // In undirected graphs, ignore edge to parent
+            if (u != parent) {
+              return true;
+            }
+          } else {
+            // In directed graphs, any back-edge indicates a cycle
+            return true;
+          }
+        }
+
+        rec_stack[v] = false;
+        return false;
+      };
+
+      for (uint32_t i = 0; i < num_vertices; i++) {
+        if (!visited[i] && dfs(i, UINT32_MAX)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
 
     private:
       static void recursive_random_regular_graph(
