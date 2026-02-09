@@ -12,6 +12,13 @@
 
 class QuantumCircuit;
 
+// Need to forward-declare glz types so that classes can have glz types as friends
+// Required for serialization of private fields
+namespace glz {
+  template <typename T>
+  class meta;
+}
+
 template <typename T>
 static void remove_even_indices(std::vector<T> &v) {
   uint32_t vlen = v.size();
@@ -113,51 +120,111 @@ static inline constexpr size_t binary_word_size() {
   return 8u*sizeof(binary_word);
 }
 
-struct BitString {
-  uint32_t num_bits;
-  std::vector<binary_word> bits;
+class BitString {
+  public:
+    class BitRef {
+      public:
+        BitRef(BitString& bs, size_t i) : bs_(bs), i_(i) {}
 
-  BitString()=default;
+        BitRef& operator=(bool v) {
+          bs_.set(i_, v);
+          return *this;
+        }
 
-  BitString(uint32_t num_bits);
+        BitRef& operator=(const BitRef& other) {
+          return *this = static_cast<bool>(other);
+        }
 
-  binary_word to_integer() const;
+        operator bool() const {
+          return bs_.get(i_);
+        }
 
-  static BitString from_bits(size_t num_bits, binary_word bits);
+      private:
+        BitString& bs_;
+        size_t i_;
+    };
 
-  static BitString random(size_t num_bits, double p = 0.5);
+    BitRef operator[](std::size_t i) {
+        return BitRef(*this, i);
+    }
 
-  uint32_t hamming_weight() const;
+    bool operator[](std::size_t i) const {
+      return get(i);
+    }
 
-  QubitInterval support_range() const;
+    uint32_t get_num_bits() const {
+      return num_bits;
+    }
 
-  inline binary_word get(uint32_t i) const {
-    binary_word word = bits[i / binary_word_size()];
-    uint32_t bit_ind = i % binary_word_size();
+    BitString()=default;
 
-    return (word >> bit_ind) & static_cast<binary_word>(1);
-  }
+    BitString(uint32_t num_bits);
 
-  inline void set(uint32_t i, binary_word v) {
-    uint32_t word_ind = i / binary_word_size();
-    uint32_t bit_ind = i % binary_word_size();
+    template <typename T>
+    BitString(const std::vector<T>& data) : BitString(data.size()) {
+      for (size_t i = 0; i < num_bits; ++i) {
+        set(i, data[i]);
+      }
+    }
 
-    bits[word_ind] = (bits[word_ind] & ~(static_cast<binary_word>(1) << bit_ind)) | (v << bit_ind);
-  }
+    template <typename T>
+    BitString(std::initializer_list<T> data) : BitString(static_cast<size_t>(data.size())) {
+      size_t i = 0;
+      for (T b : data) {
+        set(i++, b);
+      }
+    }
 
-  uint32_t size() const;
+    binary_word to_integer() const;
 
-  const binary_word& operator[](uint32_t i) const;
+    static BitString from_bits(size_t num_bits, binary_word bits);
 
-  binary_word& operator[](uint32_t i);
+    static BitString random(size_t num_bits, double p = 0.5);
 
-  BitString operator^(const BitString& other) const;
+    uint32_t hamming_weight() const;
 
-  BitString& operator^=(const BitString& other);
+    QubitInterval support_range() const;
 
-  BitString substring(const std::vector<uint32_t>& kept_bits, bool remove_bits=false) const;
+    inline binary_word get(uint32_t i) const {
+      binary_word word = bits[i / binary_word_size()];
+      uint32_t bit_ind = i % binary_word_size();
 
-  BitString superstring(const std::vector<uint32_t>& sites, size_t new_num_bits) const;
+      return (word >> bit_ind) & static_cast<binary_word>(1);
+    }
+
+    inline void set(uint32_t i, binary_word v) {
+      uint32_t word_ind = i / binary_word_size();
+      uint32_t bit_ind = i % binary_word_size();
+
+      bits[word_ind] = (bits[word_ind] & ~(static_cast<binary_word>(1) << bit_ind)) | (v << bit_ind);
+    }
+
+    uint32_t size() const;
+
+    binary_word& _word(uint32_t i) {
+      return bits[i];
+    }
+
+    const binary_word& _word(uint32_t i) const {
+      return bits[i];
+    }
+
+    bool operator==(const BitString& other) const;
+
+    BitString operator^(const BitString& other) const;
+
+    BitString& operator^=(const BitString& other);
+
+    BitString substring(const std::vector<uint32_t>& kept_bits, bool remove_bits=false) const;
+
+    BitString superstring(const std::vector<uint32_t>& sites, size_t new_num_bits) const;
+
+    friend struct glz::meta<BitString>;
+
+  private:
+    uint32_t num_bits;
+    std::vector<binary_word> bits;
+
 };
 
 class PauliString {
@@ -391,7 +458,7 @@ class PauliString {
     inline uint8_t get_xz(uint32_t i) const {
       constexpr uint32_t num_paulis = binary_word_size()/2;
       uint32_t bit_ind = 2u*(i % num_paulis);
-      return 0u | (((bit_string.bits[i / num_paulis] >> bit_ind) & 3u) << 0u);
+      return 0u | (((bit_string._word(i / num_paulis) >> bit_ind) & 3u) << 0u);
     }
 
     inline uint8_t get_r() const { 
@@ -457,11 +524,11 @@ namespace fmt {
     auto format(const BitString& bs, FormatContext& ctx) const -> decltype(ctx.out()) {
       std::string bit_str = "";
       for (size_t i = 0; i < bs.size(); i++) {
-        bit_str += fmt::format("{:032b}", bs.bits[i]);
+        bit_str += fmt::format("{:032b}", bs._word(i));
       }
 
       size_t n = bit_str.size();
-      size_t k = width ? width.value() : bs.num_bits;
+      size_t k = width ? width.value() : bs.get_num_bits();
       bit_str = bit_str.substr(n - k, n);
 
       if (width && width.value() > bit_str.size()) {

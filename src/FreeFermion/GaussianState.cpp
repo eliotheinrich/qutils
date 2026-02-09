@@ -124,6 +124,8 @@ void GaussianState::evolve(const FreeFermionGate& gate) {
   Eigen::MatrixXcd U = (-gates::i * gate.t.value() * H).exp();
 
   if (!is_unitary(U)) {
+    std::cout << (H.adjoint() - H) << "\n";
+    std::cout << (U.adjoint() * U) - Eigen::MatrixXcd::Identity(U.rows(), U.cols()) << "\n";
     throw std::runtime_error("Non-unitary matrix passed to evolve.");
   }
 

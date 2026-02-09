@@ -386,8 +386,8 @@ uint32_t TableauSIMD::xrank() {
 //}
 
 double TableauSIMD::bitstring_amplitude(const BitString& bits) {
-  if (bits.num_bits != num_qubits) {
-    throw std::runtime_error(fmt::format("Cannot evaluate a bitstring of {} bits on a TableauSIMD of {} qubits.", bits.num_bits, num_qubits));
+  if (bits.get_num_bits() != num_qubits) {
+    throw std::runtime_error(fmt::format("Cannot evaluate a bitstring of {} bits on a TableauSIMD of {} qubits.", bits.get_num_bits(), num_qubits));
   }
 
   // TODO replace with rank defficiency?

@@ -1,4 +1,9 @@
 #include "QuantumCHPState.h"
+#include "ThreadPool.hpp"
+
+#include <queue>
+#include <condition_variable>
+#include <mutex>
 
 QuantumCHPState::QuantumCHPState(uint32_t num_qubits, bool use_simd) : CliffordState(num_qubits) {
   if (use_simd) {
@@ -45,6 +50,138 @@ void QuantumCHPState::set_print_mode(const std::string& mode) {
 Statevector QuantumCHPState::to_statevector() const {
   return tableau->to_statevector();
 }
+
+//EvolveResult QuantumCHPState::evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
+//  QuantumCircuit circuit_mapped(circuit);
+//  circuit_mapped.resize_qubits(num_qubits);
+//  circuit_mapped.apply_qubit_map(qubits);
+//  
+//  return QuantumCHPState::evolve(circuit_mapped, opts);
+//}
+//
+//EvolveResult QuantumCHPState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) {
+//  if (circuit.get_num_parameters() > 0) {
+//    throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve.");
+//  }
+//
+//  if (!circuit.is_clifford()) {
+//    throw std::runtime_error("Provided circuit is not Clifford.");
+//  }
+//
+//  if (opts.async_threads <= 1) {
+//    return QuantumState::_evolve(circuit, opts);
+//  }
+//
+//  BitString bits(circuit.get_num_cbits());
+//
+//  const size_t N = circuit.length();
+//
+//  CircuitDAG dag = circuit.to_binned_dag(binary_word_size()/2);
+//  auto reversed_dag = make_reversed_dag(dag);
+//
+//  size_t num_measurements = circuit.get_num_measurements();
+//  std::vector<MeasurementData> measurements(num_measurements);
+//  std::vector<size_t> measurement_map = circuit.get_measurement_map();
+//  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);
+//
+//  auto execute_inst = quantumcircuit_utils::overloaded {
+//    [&](const QuantumInstruction& qinst, size_t i) {
+//      auto result = CliffordState::evolve(qinst);
+//      if (result) {
+//        measurements[reversed_map.at(i)] = result.value();
+//      }
+//    },
+//    [&](const ClassicalInstruction& clinst, size_t i) {
+//      clinst.apply(bits);
+//    },
+//    [&](const ConditionedInstruction& cinst, size_t i) {
+//      const auto& inst = circuit.instructions[i];
+//      if (!cinst.should_execute(bits)) {
+//        return;
+//      }
+//
+//      auto result = CliffordState::evolve(cinst.inst);
+//
+//      if (result) {
+//        if (cinst.target) {
+//          bits.set(cinst.target.value(), result->first);
+//        }
+//
+//        measurements[reversed_map.at(i)] = result.value();
+//      }
+//    }
+//  };
+//
+//  // === 1. Compute in-degrees ===
+//  std::vector<std::atomic<int>> indegree(N);
+//  for (size_t i = 0; i < N; ++i) {
+//    indegree[i].store(static_cast<int>(reversed_dag.degree(i)), std::memory_order_relaxed);
+//  }
+//
+//  // === 2. Find initial ready tasks ===
+//  std::queue<size_t> ready;
+//  for (size_t i = 0; i < N; ++i) {
+//    if (indegree[i] == 0) {
+//      ready.push(i);
+//    }
+//  }
+//
+//  // === 3. Shared synchronization ===
+//  std::mutex mtx;
+//  std::condition_variable cv;
+//  std::atomic<size_t> completed = 0;
+//
+//  // === 4. Function to submit a task ===
+//  ThreadPool pool(opts.async_threads);
+//  auto submit_task = [&](size_t id) {
+//    pool.submit([&, id] {
+//      // run the task and store the result
+//      std::visit([&](
+//        auto& inst) {
+//          execute_inst(inst, id);
+//        }, dag.get_val(id)
+//      );
+//
+//      // mark children
+//      for (size_t child : dag.neighbors(id)) {
+//        int old = indegree[child].fetch_sub(1) - 1;
+//        if (old == 0) {
+//          std::unique_lock lk(mtx);
+//          ready.push(child);
+//          cv.notify_one();
+//        }
+//      }
+//
+//      // if all tasks finished, wake the main thread
+//      if (++completed == N) {
+//        std::unique_lock lk(mtx);
+//        cv.notify_all();
+//      }
+//    });
+//  };
+//
+//  // === 5. Main scheduler loop ===
+//  {
+//    std::unique_lock lk(mtx);
+//    while (completed.load() < N) {
+//      // submit all currently ready tasks
+//      while (!ready.empty()) {
+//        size_t id = ready.front();
+//        ready.pop();
+//        submit_task(id);
+//      }
+//
+//      // sleep until:
+//      //  - a new task becomes ready OR
+//      //  - all tasks finish
+//      cv.wait(lk, [&] {
+//        return completed.load() == N || !ready.empty();
+//      });
+//    }
+//  }
+//
+//  return process_measurement_results(measurements, opts);
+//}
 
 void QuantumCHPState::h(uint32_t a) {
   tableau->h(a);

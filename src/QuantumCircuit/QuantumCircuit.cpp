@@ -74,61 +74,65 @@ bool QuantumCircuit::is_unitary() const {
   return true;
 }
 
-CircuitDAG QuantumCircuit::to_dag() const {
-  CircuitDAG dag(length());
+CircuitDAG QuantumCircuit::to_binned_dag(uint32_t bin_width) const {
+  const size_t N = length();
+  CircuitDAG dag(N);
 
-  std::vector<std::queue<size_t>> covers(num_qubits + num_cbits);
-  std::vector<Qubits> supports(length());
-  std::vector<Qubits> classical_supports(length());
+  size_t n_qbins = (num_qubits + bin_width - 1) / bin_width;
+  size_t n_cbins = (num_cbits + bin_width - 1) / bin_width;
 
-  for (size_t i = 0; i < length(); i++) {
+  std::vector<std::vector<size_t>> covers(n_qbins + n_cbins);
+
+  std::vector<Qubits> supports(N);
+  std::vector<Qubits> classical_supports(N);
+
+  for (size_t i = 0; i < N; i++) {
     const Instruction& inst = instructions[i];
     dag.set_val(i, copy_instruction(inst));
 
     supports[i] = get_instruction_support(inst);
+    classical_supports[i] = get_instruction_classical_support(inst);
 
+    std::unordered_set<size_t> touched_qbins;
     for (uint32_t q : supports[i]) {
-      covers[q].push(i);
+      size_t word = q / bin_width;
+      touched_qbins.insert(word);  // only one entry per word
+    }
+    for (size_t word : touched_qbins) {
+      covers[word].push_back(i);
     }
 
     classical_supports[i] = get_instruction_classical_support(inst);
-
-    for (uint32_t q : classical_supports[i]) {
-      covers[q + num_qubits].push(i);
+    std::unordered_set<size_t> touched_cbins;
+    for (uint32_t c : classical_supports[i]) {
+      size_t word = n_qbins + (c / bin_width);
+      touched_cbins.insert(word);
+    }
+    for (size_t word : touched_cbins) {
+      covers[word].push_back(i);
     }
   }
 
-  for (size_t i = 0; i < length(); i++) {
-    // go through every qubit in the support of instruction i
-    // if any other instructions act on this qubit, then that instruction
-    // causally depends on instruction i
-    for (uint32_t q : supports[i]) {
-      covers[q].pop();
-      if (covers[q].size() > 0) {
-        // next node that depends on i
-        size_t j = covers[q].front(); 
-
-        if (j != i) {
-          dag.add_edge(i, j);
-        }
-      }
+  for (const auto& bin : covers) {
+    if (bin.size() < 2) {
+      continue; 
     }
 
-    for (uint32_t q_ : classical_supports[i]) {
-      uint32_t q = q_ + num_qubits;
-      covers[q].pop();
-      if (covers[q].size() > 0) {
-        // next node that depends on i
-        size_t j = covers[q].front(); 
-
-        if (j != i) {
-          dag.add_edge(i, j);
-        }
+    for (size_t idx = 0; idx + 1 < bin.size(); ++idx) {
+      size_t i = bin[idx];
+      size_t j = bin[idx + 1];
+      if (i != j) {
+        dag.add_edge(i, j);
       }
     }
   }
 
   return dag;
+
+}
+
+CircuitDAG QuantumCircuit::to_dag() const {
+  return to_binned_dag(1);
 }
 
 using TreeEntry = std::pair<size_t, int>;
@@ -152,16 +156,16 @@ DirectedGraph<int> make_reversed_dag(const CircuitDAG& dag) {
   return reversed_dag;
 }
 
-QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map, const std::vector<size_t>& parameter_map, bool ltr) {
-  auto reversed_dag = make_reversed_dag(dag);
+QuantumCircuit QuantumCircuit::to_circuit(const TranspiledCircuit &tc, bool ltr) {
+  auto reversed_dag = make_reversed_dag(tc.dag);
 
   // Hold a pair of the DAG index and the reference qubit
   std::set<TreeEntry, PairCmp> leafs;
-  for (size_t i = 0; i < dag.num_vertices; i++) {
+  for (size_t i = 0; i < tc.dag.num_vertices; i++) {
     if (reversed_dag.degree(i) == 0) {
-      const Instruction& inst = dag.get_val(i);
+      const Instruction& inst = tc.dag.get_val(i);
       if (!instruction_is_quantum(inst)) {
-        leafs.emplace(i, ltr ? 0 : num_qubits);  
+        leafs.emplace(i, ltr ? 0 : tc.num_qubits);  
       } else {
         uint32_t q = ltr ? std::ranges::min(get_instruction_support(inst)) : std::ranges::max(get_instruction_support(inst));
         leafs.emplace(i, q);
@@ -169,17 +173,17 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
     }
   }
 
-  QuantumCircuit circuit(num_qubits, num_cbits);
-  size_t num_measurements = measurement_map.size();
+  QuantumCircuit circuit(tc.num_qubits, tc.num_cbits);
+  size_t num_measurements = tc.measurement_map.size();
   std::vector<size_t> new_measurement_map(num_measurements);
-  std::map<size_t, size_t> reversed_measurement_map = reverse_map(measurement_map);
+  std::map<size_t, size_t> reversed_measurement_map = reverse_map(tc.measurement_map);
 
-  size_t num_parameters = parameter_map.size();
+  size_t num_parameters = tc.parameter_map.size();
   std::vector<size_t> new_parameter_map(num_parameters);
-  std::map<size_t, size_t> reversed_parameter_map = reverse_map(parameter_map);
+  std::map<size_t, size_t> reversed_parameter_map = reverse_map(tc.parameter_map);
 
   size_t i = 0;
-  int pos = ltr ? 0 : num_qubits;
+  int pos = ltr ? 0 : tc.num_qubits;
   std::set<size_t> visited;
   size_t n = 0;
 
@@ -211,7 +215,7 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
     std::tie(i, pos) = *it;
 
     visited.insert(i);
-    circuit.add_instruction(dag.get_val(i));
+    circuit.add_instruction(tc.dag.get_val(i));
 
     if (reversed_measurement_map.contains(i)) {
       size_t arg = reversed_measurement_map[i];
@@ -224,7 +228,7 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
     }
 
     std::set<size_t> new_leafs;
-    for (size_t j : dag.edges_of(i)) {
+    for (size_t j : tc.dag.edges_of(i)) {
       bool include = true;
       for (size_t k : reversed_dag.edges_of(j)) {
         if (!visited.contains(k)) {
@@ -241,7 +245,7 @@ QuantumCircuit QuantumCircuit::to_circuit(const CircuitDAG& dag, uint32_t num_qu
     leafs.erase(it);
 
     for (size_t j : new_leafs) {
-      const Instruction& inst = dag.get_val(j);
+      const Instruction& inst = tc.dag.get_val(j);
       uint32_t q = ltr ? std::ranges::min(get_instruction_support(inst)) : std::ranges::max(get_instruction_support(inst));
       leafs.emplace(j, q);
     }
@@ -381,10 +385,11 @@ QuantumCircuit reduce_commuting_hamiltonians(const QuantumCircuit& self) {
   return circuit;
 }
 
-QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
+TranspiledCircuit QuantumCircuit::transpile() const {
   // First, turn CommutingHamiltonianGate into regular gates
   QuantumCircuit circuit = reduce_commuting_hamiltonians(*this);
 
+  // Get the corresponding DAG
   CircuitDAG dag = circuit.to_dag();
   auto reversed_dag = make_reversed_dag(dag);
 
@@ -393,6 +398,7 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
   std::vector<size_t> measurement_map = circuit.measurement_map;
   std::vector<size_t> parameter_map = circuit.parameter_map;
 
+  // Simplify the DAG
   while (merged_any) {
     merged_any = false;
 
@@ -450,8 +456,15 @@ QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
     dag.remove_vertex(j);
     reversed_dag.remove_vertex(j);
   }
+
+  return {dag, measurement_map, parameter_map, num_qubits, num_cbits};
+}
+
+
+QuantumCircuit QuantumCircuit::simplify(bool ltr) const {
+  TranspiledCircuit tc = transpile();
   
-  return to_circuit(dag, num_qubits, num_cbits, measurement_map, parameter_map, ltr);
+  return to_circuit(tc, ltr);
 }
 
 void QuantumCircuit::apply_qubit_map(const Qubits& qubits) {

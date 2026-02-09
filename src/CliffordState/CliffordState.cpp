@@ -19,47 +19,47 @@ EvolveResult CliffordState::evolve(const QuantumCircuit& circuit, EvolveOpts opt
 
 std::optional<MeasurementData> CliffordState::evolve(const QuantumInstruction& inst) {
   return std::visit(quantumcircuit_utils::overloaded{
-      [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
-        std::string name = gate->label();
+    [this](std::shared_ptr<Gate> gate) -> std::optional<MeasurementData> { 
+      std::string name = gate->label();
 
-        if (name == "H") {
-          h(gate->qubits[0]);
-        } else if (name == "S") {
-          s(gate->qubits[0]);
-        } else if (name == "Sd") {
-          sd(gate->qubits[0]);
-        } else if (name == "CX") {
-          cx(gate->qubits[0], gate->qubits[1]);
-        } else if (name == "X") {
-          x(gate->qubits[0]);
-        } else if (name == "Y") {
-          y(gate->qubits[0]);
-        } else if (name == "Z") {
-          z(gate->qubits[0]);
-        } else if (name == "CY") {
-          cy(gate->qubits[0], gate->qubits[1]);
-        } else if (name == "CZ") {
-          cz(gate->qubits[0], gate->qubits[1]);
-        } else if (name == "SWAP") {
-          swap(gate->qubits[0], gate->qubits[1]);
-        } else {
-          throw std::runtime_error(fmt::format("Invalid instruction \"{}\" provided to CliffordState.evolve.", name));
-        }
-
-        return std::nullopt;
-      },
-      [](const FreeFermionGate& gate) -> std::optional<MeasurementData> {
-        throw std::runtime_error("Cannot evolve FreeFermionGate on Clifford states.");
-      },
-      [](const CommutingHamiltonianGate& gate) -> std::optional<MeasurementData> {
-        throw std::runtime_error("Cannot evolve CommutingHamiltonianGate on Clifford states.");
-      },
-      [this](const Measurement& m) -> std::optional<MeasurementData> { 
-        return measure(m);
-      },
-      [](const WeakMeasurement& m) -> std::optional<MeasurementData> {
-        throw std::runtime_error("Cannot perform weak measurements on Clifford states.");
+      if (name == "H") {
+        h(gate->qubits[0]);
+      } else if (name == "S") {
+        s(gate->qubits[0]);
+      } else if (name == "Sd") {
+        sd(gate->qubits[0]);
+      } else if (name == "CX") {
+        cx(gate->qubits[0], gate->qubits[1]);
+      } else if (name == "X") {
+        x(gate->qubits[0]);
+      } else if (name == "Y") {
+        y(gate->qubits[0]);
+      } else if (name == "Z") {
+        z(gate->qubits[0]);
+      } else if (name == "CY") {
+        cy(gate->qubits[0], gate->qubits[1]);
+      } else if (name == "CZ") {
+        cz(gate->qubits[0], gate->qubits[1]);
+      } else if (name == "SWAP") {
+        swap(gate->qubits[0], gate->qubits[1]);
+      } else {
+        throw std::runtime_error(fmt::format("Invalid instruction \"{}\" provided to CliffordState.evolve.", name));
       }
+
+      return std::nullopt;
+    },
+    [](const FreeFermionGate& gate) -> std::optional<MeasurementData> {
+      throw std::runtime_error("Cannot evolve FreeFermionGate on Clifford states.");
+    },
+    [](const CommutingHamiltonianGate& gate) -> std::optional<MeasurementData> {
+      throw std::runtime_error("Cannot evolve CommutingHamiltonianGate on Clifford states.");
+    },
+    [this](const Measurement& m) -> std::optional<MeasurementData> { 
+      return measure(m);
+    },
+    [](const WeakMeasurement& m) -> std::optional<MeasurementData> {
+      throw std::runtime_error("Cannot perform weak measurements on Clifford states.");
+    }
   }, inst);
 }
 

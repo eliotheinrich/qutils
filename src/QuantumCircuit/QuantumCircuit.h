@@ -14,6 +14,14 @@
 
 using CircuitDAG = DirectedGraph<Instruction>;
 
+struct TranspiledCircuit {
+  CircuitDAG dag;
+  std::vector<size_t> measurement_map;
+  std::vector<size_t> parameter_map;
+  uint32_t num_qubits;
+  uint32_t num_cbits;
+};
+
 class QuantumCircuit {
   private:
     uint32_t num_qubits;
@@ -60,8 +68,10 @@ class QuantumCircuit {
       parameter_map = qc.parameter_map;
     };
 
+    CircuitDAG to_binned_dag(uint32_t bin_width) const;
     CircuitDAG to_dag() const;
-    static QuantumCircuit to_circuit(const CircuitDAG& dag, uint32_t num_qubits, uint32_t num_cbits, const std::vector<size_t>& measurement_map, const std::vector<size_t>& parameter_map, bool ltr=true);
+    TranspiledCircuit transpile() const;
+    static QuantumCircuit to_circuit(const TranspiledCircuit &tc, bool ltr=true);
     QuantumCircuit simplify(bool ltr) const;
 
     uint32_t get_num_qubits() const {
@@ -283,6 +293,8 @@ class QuantumCircuit {
 
     Eigen::MatrixXcd to_matrix(const std::optional<std::vector<double>>& params_opt=std::nullopt) const;
 };
+
+DirectedGraph<int> make_reversed_dag(const CircuitDAG& dag);
 
 template <>
 struct fmt::formatter<QuantumCircuit> {

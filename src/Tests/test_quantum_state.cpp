@@ -1781,6 +1781,55 @@ bool test_commuting_hamiltonian_gate() {
   return true;
 }
 
+bool test_async_mps() {
+  int s = randi();
+  std::cout << fmt::format("seed = {}\n", s);
+
+  Random::seed_rng(s);
+  for (size_t i = 0; i < 100; i++) {
+    uint32_t nqb = randi(10, 40);
+    MatrixProductState mps1(nqb, 32);
+    MatrixProductState mps2(nqb, 32);
+    mps1.set_orthogonality_level(0);
+    mps2.set_orthogonality_level(0);
+
+    QuantumCircuit qc(nqb);
+    for (uint32_t i = 0; i < 100; i++) {
+      uint32_t r = randi() % nqb;
+      qc.add_gate(haar_unitary(2), {r, (r+1)%nqb});
+    }
+
+    for (size_t q = 0; q < nqb/2; q++) {
+      auto r = randi(0, nqb);
+      //qc.mzr(r);
+    }
+
+    EvolveOpts opts1;
+    opts1.return_measurement_outcomes = true;
+
+    EvolveOpts opts2;
+    opts2.return_measurement_outcomes = true;
+    opts2.async_threads = 4;
+
+    s = randi();
+    Random::seed_rng(s);
+    std::vector<bool> results1 = std::get<std::vector<bool>>(mps1.evolve(qc, opts1).value());
+    Random::seed_rng(s);
+    std::vector<bool> results2 = std::get<std::vector<bool>>(mps2.evolve(qc, opts2).value());
+
+
+    for (int j = 0; j < 10; j++) {
+      PauliString P = PauliString::randh(nqb);
+      auto c1 = std::abs(mps1.expectation(P));
+      auto c2 = std::abs(mps2.expectation(P));
+
+      ASSERT(is_close(c1, c2));
+    }
+  }
+
+  return true;
+}
+
 using TestResult = std::tuple<bool, int>;
 
 #define ADD_TEST(x)                                                               \
@@ -1844,6 +1893,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_sparse_pauli_obs);
   ADD_TEST(test_pauli_evolution);
   ADD_TEST(test_commuting_hamiltonian_gate);
+  ADD_TEST(test_async_mps);
   //ADD_TEST(test_chp_probs);
 
   constexpr char green[] = "\033[1;32m";

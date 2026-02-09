@@ -1,5 +1,6 @@
 #include "QuantumStates.h"
 #include "Logger.hpp"
+#include "ThreadPool.hpp"
 
 #include <memory>
 #include <sstream>
@@ -1987,7 +1988,9 @@ MatrixProductState MatrixProductState::xxz_ground_state(size_t num_qubits, doubl
   return dmrg_state(sites, H, num_sweeps, num_qubits, max_bond_dimension, sv_threshold);
 }
 
-MatrixProductState MatrixProductState::spin_chain_ground_state(size_t num_qubits, const std::vector<double>& Jx, const std::vector<double>& Jy, const std::vector<double>& Jz, size_t max_bond_dimension, double sv_threshold, size_t num_sweeps) {
+MatrixProductState MatrixProductState::spin_chain_ground_state(size_t num_qubits, const std::vector<double>& Jx, const std::vector<double>& Jy, const std::vector<double>& Jz, 
+                                          std::optional<std::vector<double>> hx, std::optional<std::vector<double>> hy, std::optional<std::vector<double>> hz, 
+                                          size_t max_bond_dimension, double sv_threshold, size_t num_sweeps) {
   if (Jx.size() != num_qubits - 1 || Jy.size() != num_qubits - 1 || Jz.size() != num_qubits - 1) {
     throw std::runtime_error("Mismatched coupling sizes.");
   }
@@ -1999,6 +2002,31 @@ MatrixProductState MatrixProductState::spin_chain_ground_state(size_t num_qubits
     ampo += -2.0*Jx[j-1], "Sx", j, "Sx", j + 1;
     ampo += -2.0*Jy[j-1], "Sy", j, "Sy", j + 1;
     ampo += -2.0*Jz[j-1], "Sz", j, "Sz", j + 1;
+  }
+
+  if (hx) {
+    if (hx->size() != num_qubits) {
+      throw std::runtime_error("hx must have length num_qubits.");
+    }
+    for (int j = 1; j <= num_qubits; ++j) {
+        ampo += -hx->operator[](j-1), "Sx", j;
+    }
+  }
+  if (hy) {
+    if (hy->size() != num_qubits) {
+      throw std::runtime_error("hy must have length num_qubits.");
+    }
+    for (int j = 1; j <= num_qubits; ++j) {
+        ampo += -hy->operator[](j-1), "Sy", j;
+    }
+  }
+  if (hz) {
+    if (hz->size() != num_qubits) {
+      throw std::runtime_error("hz must have length num_qubits.");
+    }
+    for (int j = 1; j <= num_qubits; ++j) {
+        ampo += -hz->operator[](j-1), "Sz", j;
+    }
   }
   auto H = toMPO(ampo);
 
@@ -2183,6 +2211,134 @@ void MatrixProductState::evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) {
 
 void MatrixProductState::evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) {
   impl->evolve(gate, qubits);
+}
+
+EvolveResult MatrixProductState::evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts) {
+  QuantumCircuit circuit_mapped(circuit);
+  circuit_mapped.resize_qubits(num_qubits);
+  circuit_mapped.apply_qubit_map(qubits);
+  
+  return MatrixProductState::evolve(circuit_mapped, opts);
+}
+
+EvolveResult MatrixProductState::evolve(const QuantumCircuit& circuit, EvolveOpts opts) {
+  if (circuit.get_num_parameters() > 0) {
+    throw std::invalid_argument("Unbound QuantumCircuit parameters; cannot evolve.");
+  }
+
+  if (opts.async_threads <= 1 || impl->orthogonality_level) {
+    return QuantumState::evolve(circuit, opts);
+  }
+
+  BitString bits(circuit.get_num_cbits());
+
+  const size_t N = circuit.length();
+
+  CircuitDAG dag = circuit.to_binned_dag(binary_word_size()/2);
+  auto reversed_dag = make_reversed_dag(dag);
+
+  size_t num_measurements = circuit.get_num_measurements();
+  std::vector<MeasurementData> measurements(num_measurements);
+  std::vector<size_t> measurement_map = circuit.get_measurement_map();
+  std::map<size_t, size_t> reversed_map = reverse_map(measurement_map);
+
+  auto execute_inst = quantumcircuit_utils::overloaded {
+    [&](const QuantumInstruction& qinst, size_t i) {
+      auto result = QuantumState::evolve(qinst);
+      if (result) {
+        measurements[reversed_map.at(i)] = result.value();
+      }
+    },
+    [&](const ClassicalInstruction& clinst, size_t i) {
+      clinst.apply(bits);
+    },
+    [&](const ConditionedInstruction& cinst, size_t i) {
+      const auto& inst = circuit.instructions[i];
+      if (!cinst.should_execute(bits)) {
+        return;
+      }
+
+      auto result = QuantumState::evolve(cinst.inst);
+
+      if (result) {
+        if (cinst.target) {
+          bits.set(cinst.target.value(), result->first);
+        }
+
+        measurements[reversed_map.at(i)] = result.value();
+      }
+    }
+  };
+
+  // === 1. Compute in-degrees ===
+  std::vector<std::atomic<int>> indegree(N);
+  for (size_t i = 0; i < N; ++i) {
+    indegree[i].store(static_cast<int>(reversed_dag.degree(i)), std::memory_order_relaxed);
+  }
+
+  // === 2. Find initial ready tasks ===
+  std::queue<size_t> ready;
+  for (size_t i = 0; i < N; ++i) {
+    if (indegree[i] == 0) {
+      ready.push(i);
+    }
+  }
+
+  // === 3. Shared synchronization ===
+  std::mutex mtx;
+  std::condition_variable cv;
+  std::atomic<size_t> completed = 0;
+
+  // === 4. Function to submit a task ===
+  ThreadPool pool(opts.async_threads);
+  auto submit_task = [&](size_t id) {
+    pool.submit([&, id] {
+      // run the task and store the result
+      std::visit([&](
+        auto& inst) {
+          execute_inst(inst, id);
+        }, dag.get_val(id)
+      );
+
+      // mark children
+      for (size_t child : dag.neighbors(id)) {
+        int old = indegree[child].fetch_sub(1) - 1;
+        if (old == 0) {
+          std::unique_lock lk(mtx);
+          ready.push(child);
+          cv.notify_one();
+        }
+      }
+
+      // if all tasks finished, wake the main thread
+      if (++completed == N) {
+        std::unique_lock lk(mtx);
+        cv.notify_all();
+      }
+    });
+  };
+
+  // === 5. Main scheduler loop ===
+  {
+    std::unique_lock lk(mtx);
+    while (completed.load() < N) {
+      // submit all currently ready tasks
+      while (!ready.empty()) {
+        size_t id = ready.front();
+        ready.pop();
+        submit_task(id);
+      }
+
+      // sleep until:
+      //  - a new task becomes ready OR
+      //  - all tasks finish
+      cv.wait(lk, [&] {
+        return completed.load() == N || !ready.empty();
+      });
+    }
+  }
+
+  return process_measurement_results(measurements, opts);
 }
 
 std::vector<double> MatrixProductState::probabilities() const {
