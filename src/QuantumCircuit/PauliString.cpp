@@ -23,7 +23,7 @@ BitString BitString::from_bits(size_t num_bits, binary_word bits) {
   BitString bit_string(num_bits);
 
   bit_string.bits = std::vector<binary_word>(1);
-  bit_string[0] = bits;
+  bit_string._word(0) = bits;
 
   return bit_string;
 }
@@ -71,12 +71,18 @@ uint32_t BitString::size() const {
   return bits.size();
 }
 
-const binary_word& BitString::operator[](uint32_t i) const {
-  return bits[i];
-}
+bool BitString::operator==(const BitString& other) const {
+  if (num_bits != other.num_bits) { 
+    return false;
+  }
 
-binary_word& BitString::operator[](uint32_t i) {
-  return bits[i];
+  for (size_t i = 0; i < num_bits; ++i) {
+    if (get(i) != other.get(i)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 BitString BitString::operator^(const BitString& other) const {
@@ -87,7 +93,7 @@ BitString BitString::operator^(const BitString& other) const {
   BitString new_bits(num_bits);
 
   for (size_t i = 0; i < size(); i++) {
-    new_bits[i] = bits[i] ^ other.bits[i];
+    new_bits._word(i) = _word(i) ^ other._word(i);
   }
 
   return new_bits;
@@ -99,7 +105,7 @@ BitString& BitString::operator^=(const BitString& other) {
   }
 
   for (size_t i = 0; i < bits.size(); ++i) {
-    bits[i] ^= other.bits[i];
+    _word(i) ^= other._word(i);
   }
 
   return *this;
@@ -196,7 +202,7 @@ PauliString PauliString::rand(uint32_t num_qubits) {
   PauliString p(num_qubits);
 
   for (size_t i = 0; i < p.bit_string.size(); i++) {
-    p.bit_string[i] = randi();
+    p.bit_string._word(i) = randi();
   }
 
   p.set_r(randi() % 4);

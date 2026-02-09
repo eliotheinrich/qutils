@@ -214,6 +214,54 @@ bool test_chp_simd() {
 
 #endif
 
+bool test_async_chp() {
+  int s = randi();
+  std::cout << fmt::format("seed = {}\n", s);
+
+  Random::seed_rng(s);
+  for (size_t i = 0; i < 100; i++) {
+    uint32_t nqb = randi(256, 1024);
+    QuantumCHPState chp1(nqb);
+    QuantumCHPState chp2(nqb);
+    chp1.set_print_mode("paulis_all");
+    chp2.set_print_mode("paulis_all");
+
+    QuantumCircuit qc(nqb);
+    for (uint32_t i = 0; i < 100; i++) {
+      uint64_t r = randi() % nqb;
+      qc.random_clifford({r, (r+1)%nqb});
+    }
+
+    for (size_t q = 0; q < nqb/2; q++) {
+      auto r = randi(0, nqb);
+      //qc.mzr(r);
+    }
+
+    EvolveOpts opts1;
+    opts1.return_measurement_outcomes = true;
+
+    EvolveOpts opts2;
+    opts2.return_measurement_outcomes = true;
+    opts2.async_threads = 4;
+
+    s = randi();
+    Random::seed_rng(s);
+    std::vector<bool> results1 = std::get<std::vector<bool>>(chp1.evolve(qc, opts1).value());
+    Random::seed_rng(s);
+    std::vector<bool> results2 = std::get<std::vector<bool>>(chp2.evolve(qc, opts2).value());
+
+    Qubits qubits = random_qubits(nqb, randi(1, nqb - 1));
+    auto e1 = chp1.entanglement(qubits, 2);
+    auto e2 = chp2.entanglement(qubits, 2);
+    ASSERT(is_close(e1, e2), fmt::format("Error in CHP entanglement: {} and {}\n", e1, e2));
+    chp1.rref();
+    chp2.rref();
+    ASSERT(chp1 == chp2, fmt::format("States do not match. s = {}\n", s));
+    //ASSERT(chp1 == chp2, fmt::format("States = \n{}\n\n{}\n\ns = {}\n", chp1.to_string(), chp2.to_string(), s));
+  }
+
+  return true;
+}
 
 using TestResult = std::tuple<bool, int>;
 
@@ -240,6 +288,11 @@ int main(int argc, char *argv[]) {
 
   ADD_TEST(test_chp_state);
   ADD_TEST(test_chp_simd);
+  //ADD_TEST(test_forced_measurement);
+  //ADD_TEST(test_bitstring_expectation);
+  //ADD_TEST(test_measurement_record);
+  //ADD_TEST(test_chp_probs);
+  ADD_TEST(test_async_chp);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

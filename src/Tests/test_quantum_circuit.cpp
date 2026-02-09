@@ -35,6 +35,108 @@ Qubits random_qubits(size_t num_qubits, size_t k) {
   return r;
 }
 
+bool test_bitstring_brace_init() {
+  // Initialize BitString using brace-initializer list
+  BitString bs = {0, 1, 0, 0, 1, 1, 0};
+
+  // Expected values
+  bool expected[] = {0, 1, 0, 0, 1, 1, 0};
+
+  // Check that each bit matches the expected value
+  for (size_t i = 0; i < sizeof(expected)/sizeof(expected[0]); ++i) {
+    ASSERT(bs[i] == expected[i]);
+  }
+
+  // Modify a few bits
+  bs[0] = true;
+  bs[3] = true;
+  bs[6] = 1;  // assignment with int should work via BitRef -> bool
+
+  // Check that modifications were applied correctly
+  ASSERT(bs[0] == true);
+  ASSERT(bs[1] == true);
+  ASSERT(bs[3] == true);
+  ASSERT(bs[6] == true);
+
+  // Reset a bit
+  bs[4] = false;
+  ASSERT(bs[4] == false);
+
+  return true;
+}
+
+bool test_bitstring_mixed_access() {
+  BitString bs(256);
+
+  size_t idx[] = {0, 1, 7, 63, 64, 65, 127, 128};
+
+  for (size_t i : idx) {
+    bs[i] = true;
+  }
+
+  for (size_t i : idx) {
+    ASSERT(bs[i]);
+  }
+
+  bs[1]   = false;
+  bs[64]  = false;
+  bs[127] = false;
+
+  if (bs[1])   return false;
+  ASSERT(!bs[1]);
+  ASSERT(!bs[64]);
+  ASSERT(!bs[127]);
+
+  ASSERT(bs[0]);
+  ASSERT(bs[63]);
+  ASSERT(bs[65]);
+  ASSERT(bs[128]);
+
+  return true;
+}
+
+bool test_bitstring_proxy_semantics() {
+  BitString bs(256);
+
+  bs[5]  = true;
+  bs[70] = false;
+
+  bs[70] = bs[5];
+  ASSERT(bs[70]);
+
+  bs[3] = bs[5] = false;
+  ASSERT(!bs[3]);
+  ASSERT(!bs[5]);
+
+  const BitString& cbs = bs;
+  ASSERT(cbs[70]);
+  ASSERT(!cbs[5]);
+
+  return true;
+}
+
+bool test_bitstring_sequential_pattern() {
+  BitString bs(256);
+
+  for (size_t i = 0; i < 256; ++i) {
+    bs[i] = (i % 2 == 0);
+  }
+
+  for (size_t i = 0; i < 256; ++i) {
+    ASSERT(bs[i] == (i % 2 == 0));
+  }
+
+  for (size_t i = 0; i < 256; ++i) {
+    bs[i] = !bs[i];
+  }
+
+  for (size_t i = 0; i < 256; ++i) {
+    ASSERT(bs[i] == (i % 2 == 1));
+  }
+
+  return true;
+}
+
 bool test_circuit_dag() {
   constexpr size_t nqb = 8;
   QuantumCircuit qc(nqb);
@@ -84,7 +186,14 @@ bool test_qc_canonical() {
   for (size_t i = 0; i < 10; i++) {
     QuantumCircuit qc = random_unitary_circuit(nqb, 10, {2});
     CircuitDAG dag = qc.to_dag();
-    QuantumCircuit canon = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), qc.get_parameter_map(), randf() < 0.5);
+    TranspiledCircuit tc = {
+      .dag = dag,
+      .measurement_map = qc.get_measurement_map(),
+      .parameter_map = qc.get_parameter_map(),
+      .num_qubits = nqb,
+      .num_cbits = 0,
+    };
+    QuantumCircuit canon = QuantumCircuit::to_circuit(tc, randf() < 0.5);
     ASSERT(qc.to_matrix().isApprox(canon.to_matrix()));
   }
 
@@ -122,8 +231,15 @@ bool test_dag_to_circuit() {
     QuantumCircuit qc = random_unitary_circuit(nqb, 10, {1, 2, 3});
 
     CircuitDAG dag = qc.to_dag();
-    QuantumCircuit left = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), qc.get_parameter_map(), true);
-    QuantumCircuit right = QuantumCircuit::to_circuit(dag, nqb, 0, qc.get_measurement_map(), qc.get_parameter_map(), false);
+    TranspiledCircuit tc = {
+      .dag = dag,
+      .measurement_map = qc.get_measurement_map(),
+      .parameter_map = qc.get_parameter_map(),
+      .num_qubits = nqb,
+      .num_cbits = 0,
+    };
+    QuantumCircuit left = QuantumCircuit::to_circuit(tc, true);
+    QuantumCircuit right = QuantumCircuit::to_circuit(tc, false);
     ASSERT(qc.to_matrix().isApprox(left.to_matrix()));
     ASSERT(qc.to_matrix().isApprox(right.to_matrix()));
   }
@@ -706,6 +822,10 @@ int main(int argc, char *argv[]) {
     }
   }
 
+  ADD_TEST(test_bitstring_brace_init);
+  ADD_TEST(test_bitstring_mixed_access);
+  ADD_TEST(test_bitstring_proxy_semantics);
+  ADD_TEST(test_bitstring_sequential_pattern);
   ADD_TEST(test_circuit_dag);
   ADD_TEST(test_qc_reduce);
   ADD_TEST(test_pauli_reduce);

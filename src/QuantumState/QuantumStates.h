@@ -57,7 +57,8 @@ struct EvolveOpts {
     return_measurement_outcomes(false),
     return_measurement_probabilities(false),
     simplify_circuit(true),
-    dag_direction("random")
+    dag_direction("random"),
+    async_threads(1)
   {}
 
   EvolveOpts(const std::map<std::string, Parameter>& params) {
@@ -65,12 +66,14 @@ struct EvolveOpts {
     return_measurement_probabilities = get<int>(params, "return_measurement_probabilities", false);   
     simplify_circuit = get<int>(params, "simplify_circuit", true);
     dag_direction = get<std::string>(params, "dag_direction", "random");
+    async_threads = get<int>(params, "async_threads", 1);
   }
 
   bool return_measurement_outcomes;
   bool return_measurement_probabilities;
   bool simplify_circuit;
   std::string dag_direction;
+  uint32_t async_threads;
 };
 
 using MeasurementData = std::pair<bool, double>;
@@ -438,7 +441,9 @@ class MatrixProductState : public MagicQuantumState {
 
     static MatrixProductState ising_ground_state(size_t num_qubits, double h, size_t max_bond_dimension=64, double sv_threshold=1e-8, size_t num_sweeps=10);
     static MatrixProductState xxz_ground_state(size_t num_qubits, double delta, size_t max_bond_dimension=64, double sv_threshold=1e-8, size_t num_sweeps=10);
-    static MatrixProductState spin_chain_ground_state(size_t num_qubits, const std::vector<double>& Jx, const std::vector<double>& Jy, const std::vector<double>& Jz, size_t max_bond_dimension=64, double sv_threshold=1e-8, size_t num_sweeps=10);
+    static MatrixProductState spin_chain_ground_state(size_t num_qubits, const std::vector<double>& Jx, const std::vector<double>& Jy, const std::vector<double>& Jz, 
+                                std::optional<std::vector<double>> hx=std::nullopt, std::optional<std::vector<double>> hy=std::nullopt, std::optional<std::vector<double>> hz=std::nullopt, 
+                                size_t max_bond_dimension=64, double sv_threshold=1e-8, size_t num_sweeps=10);
 
 		virtual std::string to_string() const override;
 
@@ -477,12 +482,15 @@ class MatrixProductState : public MagicQuantumState {
 		virtual void evolve(const Eigen::Matrix2cd& gate, uint32_t qubit) override;
 		virtual void evolve(const Eigen::MatrixXcd& gate, const Qubits& qubits) override;
 
-    virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
-      return QuantumState::evolve(circuit, opts);
-    }
-    virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override {
-      return QuantumState::evolve(circuit, qubits, opts);
-    }
+    EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts());
+    EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts());
+
+    //virtual EvolveResult evolve(const QuantumCircuit& circuit, EvolveOpts opts=EvolveOpts()) override {
+    //  return QuantumState::evolve(circuit, opts);
+    //}
+    //virtual EvolveResult evolve(const QuantumCircuit& circuit, const Qubits& qubits, EvolveOpts opts=EvolveOpts()) override {
+    //  return QuantumState::evolve(circuit, qubits, opts);
+    //}
 
 		virtual std::vector<double> probabilities() const override;
 

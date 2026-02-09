@@ -1,5 +1,6 @@
 #include "tests.hpp"
 #include "Graph.hpp"
+#include "ThreadPool.hpp"
 
 bool test_graph() {
   UndirectedGraph<int> g(4);
@@ -66,6 +67,24 @@ bool test_max_flow() {
   return true;
 }
 
+bool test_thread_pool() {
+  ThreadPool pool(4);
+
+  int nsamples = 10;
+  std::vector<std::future<int>> futures(nsamples);
+  for (int i = 0; i < nsamples; i++) {
+    futures[i] = pool.submit([](int i) { return i*i; }, i);
+  }
+
+  for (int i = 0; i < nsamples; i++) {
+    int val = futures[i].get();
+    ASSERT(val == i*i);
+  }
+
+  pool.stop();
+  return true;
+}
+
 int main(int argc, char *argv[]) {
   std::map<std::string, TestResult> tests;
   std::set<std::string> test_names;
@@ -81,6 +100,7 @@ int main(int argc, char *argv[]) {
   ADD_TEST(test_graph);
   ADD_TEST(test_directed_graph);
   ADD_TEST(test_max_flow);
+  ADD_TEST(test_thread_pool);
 
   constexpr char green[] = "\033[1;32m";
   constexpr char black[] = "\033[0m";

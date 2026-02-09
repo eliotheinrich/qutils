@@ -481,7 +481,7 @@ NB_MODULE(qutils_bindings, m) {
 
   m.def("ising_ground_state", &MatrixProductState::ising_ground_state, "num_qubits"_a, "h"_a, "bond_dimension"_a=16, "sv_threshold"_a=1e-8, "num_sweeps"_a=10);
   m.def("xxz_ground_state", &MatrixProductState::xxz_ground_state, "num_qubits"_a, "delta"_a, "bond_dimension"_a=16, "sv_threshold"_a=1e-8, "num_sweeps"_a=10);
-  m.def("spin_chain_ground_state", &MatrixProductState::spin_chain_ground_state, "num_qubits"_a, "Jx"_a, "Jy"_a, "Jz"_a, "bond_dimension"_a=16, "sv_threshold"_a=1e-8, "num_sweeps"_a=10);
+  m.def("spin_chain_ground_state", &MatrixProductState::spin_chain_ground_state, "num_qubits"_a, "Jx"_a, "Jy"_a, "Jz"_a, "hx"_a=nanobind::none(), "hy"_a=nanobind::none(), "hz"_a=nanobind::none(), "bond_dimension"_a=16, "sv_threshold"_a=1e-8, "num_sweeps"_a=10);
 
   nanobind::class_<QuantumCHPState, EntanglementEntropyState>(m, "QuantumCHPState")
     .def(nanobind::init<uint32_t>())

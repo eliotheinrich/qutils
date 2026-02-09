@@ -325,8 +325,8 @@ Tableau Tableau::partial_trace(const Qubits& qubits) {
 }
 
 double Tableau::bitstring_amplitude(const BitString& bits) {
-  if (bits.num_bits != num_qubits) {
-    throw std::runtime_error(fmt::format("Cannot evaluate a bitstring of {} bits on a Tableau of {} qubits.", bits.num_bits, num_qubits));
+  if (bits.get_num_bits() != num_qubits) {
+    throw std::runtime_error(fmt::format("Cannot evaluate a bitstring of {} bits on a Tableau of {} qubits.", bits.get_num_bits(), num_qubits));
   }
 
   double p = 1/std::pow(2.0, xrank() + num_qubits - stabilizers.size());
